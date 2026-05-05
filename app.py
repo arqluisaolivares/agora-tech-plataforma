@@ -13,37 +13,62 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ══════════════════════════════════════════
-# GOOGLE SHEETS — PERSISTENCIA EN LA NUBE
+# GOOGLE SHEETS + FALLBACK A JSON LOCAL
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """Conecta con Google Sheets usando el ID (más estable)"""
-    creds_info = st.secrets["gcp_service_account"]
-    scopes = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
-    gc = gspread.authorize(credentials)
-    
-    # ID de tu hoja (no cambiar)
-    spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
-    
-    sh = gc.open_by_key(spreadsheet_id)
-    return sh.worksheet("Hoja 1")       
+    """Intenta conectar con Google Sheets, si falla usa JSON local"""
+    try:
+        creds_info = st.secrets["gcp_service_account"]
+        scopes = [
+            "https://spreadsheets.google.com/feeds",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
+        gc = gspread.authorize(credentials)
+        spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
+        sh = gc.open_by_key(spreadsheet_id)
+        st.success("✅ Conectado a Google Sheets")
+        return sh.worksheet("Hoja 1")
+    except Exception as e:
+        st.warning("⚠️ No se pudo conectar a Google Sheets. Usando datos locales.")
+        return None
 
 def cargar_proyectos():
     worksheet = get_worksheet()
-    data = worksheet.get_all_records()
-    if not data:
-        return []
-    df = pd.DataFrame(data)
-    # Asegurar tipos numéricos
-    for col in ['totalNum', 'c24Num', 'c36Num']:
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-    return df.to_dict('records')
+    if worksheet is not None:
+        try:
+            data = worksheet.get_all_records()
+            if data:
+                df = pd.DataFrame(data)
+                for col in ['totalNum', 'c24Num', 'c36Num']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+                return df.to_dict('records')
+        except:
+            pass  # Si falla, continúa con JSON local
 
+    # FALLBACK: Cargar desde el archivo JSON local (como antes)
+    base = os.path.dirname(os.path.abspath(__file__))
+    for n in ["proyectos.json", "proyectos_v2.json"]:
+        ruta = os.path.join(base, n)
+        if os.path.exists(ruta):
+            with open(ruta, encoding="utf-8") as f:
+                return json.load(f)
+    return []
+
+def guardar_crm(df):
+    """Intenta guardar en Google Sheets, si falla solo muestra mensaje"""
+    worksheet = get_worksheet()
+    if worksheet is not None:
+        try:
+            worksheet.clear()
+            worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+            st.toast("💾 Guardado en Google Sheets", icon="✅")
+            return
+        except:
+            pass
+    st.toast("💾 Cambios guardados en memoria (Google Sheets no disponible)", icon="⚠️")
 def guardar_crm(df):
     """Guarda todo el CRM en Google Sheets"""
     worksheet = get_worksheet()
