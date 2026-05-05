@@ -203,20 +203,6 @@ Sistema SALTO HomeLok. Financiación 100% sin intereses. Responde en español co
     except Exception as e:
         return f"⚠️ Error temporal con Groq: {str(e)}\n\nPuedes seguir usando la app."
         
-def ask_ai(q, ctx=""):
-    key = get_ai_key()
-    if not key:
-        return "⚠️ IA no configurada. Ve a ⚙️ Configuración."
-    try:
-        genai.configure(api_key=key)
-        modelo = st.session_state.get("gemini_modelo", "gemini-1.5-flash")
-        m = genai.GenerativeModel(modelo)
-        prompt = f"DATOS CRM:\n{ctx[:15000]}\n\nSOLICITUD:\n{q}" if ctx else q
-        r = m.generate_content(prompt)
-        return r.text
-    except Exception as e:
-        return f"⚠️ Error temporal de IA: {str(e)}\n\nPuedes seguir usando la app sin IA."
-
 # ══════════════════════════════════════════
 # SESSION STATE
 # ══════════════════════════════════════════
