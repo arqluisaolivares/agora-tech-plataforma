@@ -9,19 +9,43 @@ import pandas as pd
 import json, os
 from datetime import datetime, timedelta
 import plotly.express as px
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ══════════════════════════════════════════
-# DATOS
+# GOOGLE SHEETS — PERSISTENCIA EN LA NUBE
 # ══════════════════════════════════════════
-@st.cache_data
+@st.cache_resource
+def get_worksheet():
+    """Conecta con Google Sheets usando los Secrets"""
+    creds_info = st.secrets["gcp_service_account"]
+    scopes = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
+    gc = gspread.authorize(credentials)
+    sh = gc.open("Ágora Tech CRM")      # ← Nombre exacto de tu hoja
+    return sh.worksheet("Hoja 1")       # ← Nombre de la pestaña (normalmente "Hoja 1")
+
 def cargar_proyectos():
-    base = os.path.dirname(os.path.abspath(__file__))
-    for n in ["proyectos.json","proyectos_v2.json"]:
-        ruta = os.path.join(base, n)
-        if os.path.exists(ruta):
-            with open(ruta, encoding="utf-8") as f:
-                return json.load(f)
-    return []
+    worksheet = get_worksheet()
+    data = worksheet.get_all_records()
+    if not data:
+        return []
+    df = pd.DataFrame(data)
+    # Asegurar tipos numéricos
+    for col in ['totalNum', 'c24Num', 'c36Num']:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+    return df.to_dict('records')
+
+def guardar_crm(df):
+    """Guarda todo el CRM en Google Sheets"""
+    worksheet = get_worksheet()
+    worksheet.clear()
+    worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+    st.toast("💾 Datos guardados correctamente en la nube (Google Sheets)", icon="✅")
 
 PROYECTOS_BASE = cargar_proyectos()
 
@@ -193,23 +217,7 @@ if not st.session_state.get("gemini_key"):
 # ══════════════════════════════════════════
 def get_crm():
     if st.session_state.crm is None:
-        rows = []
-        for p in PROYECTOS_BASE:
-            rows.append({
-                "id":p.get("id",""), "nombre":p.get("nombre",""), "comercial":p.get("comercial",""),
-                "contacto":p.get("contacto",""), "email":p.get("email",""),
-                "total":p.get("total","$0"), "totalNum":int(float(p.get("totalNum",0) or 0)),
-                "cuota24":p.get("cuota24","$0"), "cuota36":p.get("cuota36","$0"),
-                "c24Num":int(float(p.get("c24Num",0) or 0)), "c36Num":int(float(p.get("c36Num",0) or 0)),
-                "vig":p.get("vig",""), "vigH":p.get("vigH",""),
-                "estado":p.get("estado","lead"), "etapaOrig":p.get("etapaOrig",""),
-                "version":p.get("version","v1"), "notas":p.get("notas",""),
-                "lastUpdate":p.get("lastUpdate",""), "lastNote":p.get("lastNote",""),
-                "fecha":p.get("fecha",""), "drive":p.get("drive",""),
-                "historial":"",  # JSON string de lista de eventos
-                "encuesta":"",   # JSON string de respuestas del formulario
-                "contrato":"", "financiacion_info":"", "obra_inicio":"", "obra_fin":"",
-            })
+        rows = cargar_proyectos()                    # ← Ahora lee de Google Sheets
         st.session_state.crm = pd.DataFrame(rows)
     return st.session_state.crm
 
@@ -222,34 +230,41 @@ def mis_proyectos():
 
 def update_proy(nombre, campos):
     df = get_crm()
-    mask = df["nombre"]==nombre
+    mask = df["nombre"] == nombre
     if mask.any():
-        for k,v in campos.items(): df.loc[mask,k]=v
+        for k, v in campos.items():
+            df.loc[mask, k] = v
         st.session_state.crm = df
+        guardar_crm(st.session_state.crm)   # ← GUARDA EN LA NUBE
 
 def agregar_historial(nombre, estado, nota, usuario):
     """Agrega un evento al historial del proyecto."""
     df = get_crm()
-    mask = df["nombre"]==nombre
-    if not mask.any(): return
-    hist_raw = str(df.loc[mask,"historial"].iloc[0] or "[]")
-    try: hist = json.loads(hist_raw)
-    except: hist = []
+    mask = df["nombre"] == nombre
+    if not mask.any():
+        return
+    hist_raw = str(df.loc[mask, "historial"].iloc[0] or "[]")
+    try:
+        hist = json.loads(hist_raw)
+    except:
+        hist = []
     hist.append({
         "fecha": datetime.now().strftime("%d %b %Y %H:%M"),
         "estado": estado,
         "nota": nota,
         "usuario": usuario
     })
-    df.loc[mask,"historial"] = json.dumps(hist, ensure_ascii=False)
-    df.loc[mask,"lastNote"] = nota
-    df.loc[mask,"lastUpdate"] = datetime.now().isoformat()
-    df.loc[mask,"estado"] = estado
+    df.loc[mask, "historial"] = json.dumps(hist, ensure_ascii=False)
+    df.loc[mask, "lastNote"] = nota
+    df.loc[mask, "lastUpdate"] = datetime.now().isoformat()
+    df.loc[mask, "estado"] = estado
     st.session_state.crm = df
+    guardar_crm(st.session_state.crm)   # ← GUARDA EN LA NUBE
 
 def add_proy(datos):
     df = get_crm()
     st.session_state.crm = pd.concat([pd.DataFrame([datos]), df], ignore_index=True)
+    guardar_crm(st.session_state.crm)   # ← GUARDA EN LA NUBE
 
 def fc(n):
     try:
