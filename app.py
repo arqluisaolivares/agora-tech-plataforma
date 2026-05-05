@@ -13,11 +13,11 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 # ══════════════════════════════════════════
-# GOOGLE SHEETS + FALLBACK A JSON LOCAL
+# GOOGLE SHEETS + PERSISTENCIA SEGURA (JSON como respaldo)
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """Intenta conectar con Google Sheets, si falla usa JSON local"""
+    """Intenta conectar con Google Sheets"""
     try:
         creds_info = st.secrets["gcp_service_account"]
         scopes = [
@@ -28,13 +28,12 @@ def get_worksheet():
         gc = gspread.authorize(credentials)
         spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
         sh = gc.open_by_key(spreadsheet_id)
-        st.success("✅ Conectado a Google Sheets")
         return sh.worksheet("Hoja 1")
-    except Exception as e:
-        st.warning("⚠️ No se pudo conectar a Google Sheets. Usando datos locales.")
+    except:
         return None
 
 def cargar_proyectos():
+    """Carga desde Google Sheets o fallback a JSON"""
     worksheet = get_worksheet()
     if worksheet is not None:
         try:
@@ -46,31 +45,44 @@ def cargar_proyectos():
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
                 return df.to_dict('records')
         except:
-            pass  # Si falla, continúa con JSON local
+            pass
 
-    # FALLBACK: Cargar desde el archivo JSON local (como antes)
+    # FALLBACK: JSON local
     base = os.path.dirname(os.path.abspath(__file__))
     for n in ["proyectos.json", "proyectos_v2.json"]:
         ruta = os.path.join(base, n)
         if os.path.exists(ruta):
             with open(ruta, encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                df = pd.DataFrame(data)
+                # Aseguramos que existan las columnas nuevas
+                for col in ['historial', 'encuesta', 'contrato', 'financiacion_info', 'obra_inicio', 'obra_fin']:
+                    if col not in df.columns:
+                        df[col] = ""
+                return df.to_dict('records')
     return []
 
 def guardar_crm(df):
-    """Intenta guardar en Google Sheets, si falla solo muestra mensaje"""
+    """Guarda primero en Google Sheets. Si falla, guarda en proyectos.json (persistencia real)"""
+    # Intentar Google Sheets primero
     worksheet = get_worksheet()
     if worksheet is not None:
         try:
             worksheet.clear()
             worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
-            st.toast("💾 Guardado en Google Sheets", icon="✅")
+            st.toast("💾 Guardado correctamente en Google Sheets", icon="✅")
             return
         except:
             pass
-    st.toast("💾 Cambios guardados en memoria (Google Sheets no disponible)", icon="⚠️")
 
-PROYECTOS_BASE = []   # Ya no se usa (Google Sheets lo reemplaza)
+    # Si Google Sheets falla → guardar en archivo local (persistencia)
+    try:
+        base = os.path.dirname(os.path.abspath(__file__))
+        ruta = os.path.join(base, "proyectos.json")
+        df.to_json(ruta, orient="records", force_ascii=False, indent=2)
+        st.toast("💾 Guardado en archivo local (proyectos.json) como respaldo", icon="📁")
+    except Exception as e:
+        st.error(f"❌ No se pudo guardar: {e}")
 
 # ══════════════════════════════════════════
 # USUARIOS
@@ -183,27 +195,32 @@ def ai_activa(): return len(get_ai_key()) > 10
 def activar_ia(key):
     key = key.strip()
     if not key or len(key) < 20:
-        st.error("Key inválida — debe tener más de 20 caracteres"); return False
-    
+        st.error("Key inválida — debe tener más de 20 caracteres")
+        return False
+
     try:
         genai.configure(api_key=key)
         
-        # Usamos solo el modelo más estable y confiable
-        modelo = "gemini-1.5-flash"
-        m = genai.GenerativeModel(modelo)
-        # Prueba ligera
-        response = m.generate_content("OK")
+        # Probamos modelos en orden de estabilidad
+        modelos_a_probar = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
         
-        st.session_state["gemini_key"] = key
-        st.session_state["gemini_modelo"] = modelo
-        st.success(f"✅ ¡Gemini activado correctamente! (usando {modelo})")
-        return True
-        
-    except Exception as e:
-        st.error(f"❌ Error al activar Gemini: {str(e)}")
-        st.info("Consejo: Asegúrate de que la clave fue creada en https://aistudio.google.com/app/apikey")
+        for modelo in modelos_a_probar:
+            try:
+                m = genai.GenerativeModel(modelo)
+                m.generate_content("OK")   # Prueba rápida
+                st.session_state["gemini_key"] = key
+                st.session_state["gemini_modelo"] = modelo
+                st.success(f"✅ ¡Gemini activado correctamente! (usando {modelo})")
+                return True
+            except:
+                continue
+                
+        st.error("Ningún modelo disponible con esta key")
         return False
-
+    except Exception as e:
+        st.error(f"Error al activar Gemini: {str(e)}")
+        return False
+        
 def ask_ai(q, ctx=""):
     key = get_ai_key()
     if not key: return "⚠️ IA no configurada. Ve a ⚙️ Configuración."
