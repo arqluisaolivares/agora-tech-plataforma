@@ -184,19 +184,25 @@ def activar_ia(key):
     key = key.strip()
     if not key or len(key) < 20:
         st.error("Key inválida — debe tener más de 20 caracteres"); return False
+    
     try:
         genai.configure(api_key=key)
-        for modelo in GEMINI_MODELS:
-            try:
-                m = genai.GenerativeModel(modelo)
-                m.generate_content("OK")
-                st.session_state["gemini_key"] = key
-                st.session_state["gemini_modelo"] = modelo
-                return True
-            except: continue
-        st.error("Ningún modelo disponible con esta key"); return False
+        
+        # Usamos solo el modelo más estable y confiable
+        modelo = "gemini-1.5-flash"
+        m = genai.GenerativeModel(modelo)
+        # Prueba ligera
+        response = m.generate_content("OK")
+        
+        st.session_state["gemini_key"] = key
+        st.session_state["gemini_modelo"] = modelo
+        st.success(f"✅ ¡Gemini activado correctamente! (usando {modelo})")
+        return True
+        
     except Exception as e:
-        st.error(f"Error: {e}"); return False
+        st.error(f"❌ Error al activar Gemini: {str(e)}")
+        st.info("Consejo: Asegúrate de que la clave fue creada en https://aistudio.google.com/app/apikey")
+        return False
 
 def ask_ai(q, ctx=""):
     key = get_ai_key()
