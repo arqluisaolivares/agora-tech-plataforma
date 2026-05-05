@@ -325,23 +325,23 @@ def pg_dashboard():
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # NÚMEROS GRANDES Y EN NEGRILLA
-    st.markdown("### **Resumen General**")
+    # NÚMEROS GRANDES Y CLAROS (sin **)
+    st.markdown("### Resumen General")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("**Total Edificios**", f"**{total_edificios}**")
-    c2.metric("**Activos**", f"**{activos}**")
-    c3.metric("**Cotizados**", f"**{cotizados}**")
-    c4.metric("**Contacto Frío**", f"**{contacto_frio}**")
-    c5.metric("**Por Contactar**", f"**{por_contactar}**")
+    c1.metric("Total Edificios", total_edificios)
+    c2.metric("Activos", activos)
+    c3.metric("Cotizados", cotizados)
+    c4.metric("Contacto Frío", contacto_frio)
+    c5.metric("Por Contactar", por_contactar)
 
     # Pipeline grande
     st.markdown("### 💰 Pipeline")
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown(f'<div class="kpi"><div class="kpi-label">Valor Total Pipeline</div><div class="kpi-val g">**${pipeline_total/1e9:.2f}B**</div><div class="kpi-sub">{total_edificios} edificios</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi"><div class="kpi-label">Valor Total Pipeline</div><div class="kpi-val g">${pipeline_total/1e9:.2f}B</div><div class="kpi-sub">{total_edificios} edificios</div></div>', unsafe_allow_html=True)
     with col2:
         promedio = int(df["totalNum"].mean() or 0) / 1e6
-        st.markdown(f'<div class="kpi"><div class="kpi-label">Promedio por Edificio</div><div class="kpi-val">**${promedio:.1f}M**</div></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi"><div class="kpi-label">Promedio por Edificio</div><div class="kpi-val">${promedio:.1f}M</div></div>', unsafe_allow_html=True)
 
     # Gráficas
     st.markdown("<br>", unsafe_allow_html=True)
@@ -366,32 +366,45 @@ def pg_dashboard():
             fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=40,b=10))
             st.plotly_chart(fig2, use_container_width=True)
 
-    # Alertas por comercial
+    # Alertas por Comercial (en cubos / tarjetas)
     st.markdown("### 🚨 Alertas por Comercial")
     if es_g:
-        st.markdown('<div class="al-r">❗ **0 contratos cerrados** — Pipeline grande sin conversión</div>', unsafe_allow_html=True)
-        st.markdown('<div class="al-y">⚡ **Rafael** — Nomad 53 pendiente de reunión</div>', unsafe_allow_html=True)
-        st.markdown('<div class="al-y">⚡ **Sonia** — Bosque San Vicente asamblea 2 mayo</div>', unsafe_allow_html=True)
-        st.markdown('<div class="al-g">✅ **Lina** — Tiara pasó primer filtro</div>', unsafe_allow_html=True)
+        alertas = {
+            "Rafael Torres": ["Nomad 53 — reunión pendiente con David Conde"],
+            "Sonia Castro": ["Bosque San Vicente — asamblea 2 mayo"],
+            "Lina Calle": ["Tiara — pasó primer filtro"],
+            "Alberto Ferrer": ["Sin alertas pendientes"],
+            "Santiago Bohórquez": ["Sin alertas pendientes"]
+        }
+        for comercial, lista in alertas.items():
+            with st.expander(f"**{comercial}**", expanded=True):
+                for alerta in lista:
+                    st.markdown(f'<div class="al-y">⚡ {alerta}</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="al-y">⚡ Tienes **1** proyecto en negociación pendiente</div>', unsafe_allow_html=True)
+        st.markdown('<div class="al-y">⚡ Tienes alertas pendientes en tus proyectos</div>', unsafe_allow_html=True)
 
-    # Cotizaciones presentadas por mes
+    # Cotizaciones Presentadas por Mes (usando la columna "fecha")
     st.markdown("### 📅 Cotizaciones Presentadas por Mes")
-    # Gráfica simple de cotizaciones por mes (usando datos existentes)
     if not df.empty:
         df_copy = df.copy()
-        df_copy["mes"] = pd.to_datetime(df_copy.get("lastUpdate", df_copy.get("fecha", pd.Series([datetime.now()])))).dt.strftime("%b %Y")
+        # Usamos la columna "fecha" que tienes en el Excel
+        if "fecha" in df_copy.columns:
+            df_copy["mes"] = pd.to_datetime(df_copy["fecha"], errors='coerce').dt.strftime("%b %Y")
+        else:
+            df_copy["mes"] = pd.to_datetime(df_copy.get("lastUpdate", pd.Series([datetime.now()]))).dt.strftime("%b %Y")
+        
         cot_por_mes = df_copy[df_copy["estado"].isin(["cotizado", "negociacion"])].groupby("mes").size().reset_index(name="Cantidad")
+        cot_por_mes = cot_por_mes.sort_values("mes")
+        
         if not cot_por_mes.empty:
             fig_mes = px.bar(cot_por_mes, x="mes", y="Cantidad", title="Cotizaciones Presentadas por Mes",
                              color_discrete_sequence=["#00C896"])
             fig_mes.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=30,b=10))
             st.plotly_chart(fig_mes, use_container_width=True)
         else:
-            st.info("Aún no hay cotizaciones registradas este mes.")
+            st.info("No hay cotizaciones registradas aún este año.")
     else:
-        st.info("No hay datos para mostrar cotizaciones por mes.")
+        st.info("No hay datos de proyectos.")
 
     if not ai_activa():
         st.markdown('<div class="al-b">💡 IA sin configurar. Ve a ⚙️ Configuración.</div>', unsafe_allow_html=True)
