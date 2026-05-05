@@ -287,15 +287,58 @@ def fc(n):
         return "$0" if n==0 else "$"+f"{n:,}".replace(",",".")
     except: return "$0"
 
-def hdr(icon, title, sub=""):
-    st.markdown(f"""<div style='display:flex;align-items:center;gap:14px;margin-bottom:24px;
-      padding-bottom:16px;border-bottom:1px solid #E3EAF3'>
-      <div style='width:42px;height:42px;border-radius:10px;
-        background:linear-gradient(135deg,#00C896,#1A9FCC);display:flex;
-        align-items:center;justify-content:center;font-size:20px;flex-shrink:0'>{icon}</div>
-      <div><div style='font-family:Sora,sans-serif;font-size:20px;font-weight:700;color:#04111E'>{title}</div>
-        {'<div style="font-size:12px;color:#8BA3BD;margin-top:2px">'+sub+'</div>' if sub else ''}</div>
+def pg_dashboard():
+    u = st.session_state.user
+    es_g = u["rol"] == "gerente"
+    df = mis_proyectos()
+
+    total_proyectos = len(df)
+    pipeline_total = int(df["totalNum"].sum() or 0)
+    cotizados = len(df[df["estado"] == "cotizado"])
+    negociando = len(df[df["estado"].isin(["negociacion", "aprobado"])])
+    perdidos = len(df[df["estado"] == "perdido"])
+    en_ejecucion = len(df[df["estado"].isin(["creacion_contrato","financiacion","obra","entrega"])])
+
+    st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 55%,#0E3D6B 100%);
+      border-radius:14px;padding:32px 40px;margin-bottom:32px;color:white;position:relative'>
+      <div style='font-family:Sora,sans-serif;font-size:28px;font-weight:800;color:#fff'>Dashboard · {datetime.now().strftime("%d %B %Y")}</div>
+      <div style='font-size:15px;color:rgba(255,255,255,.6)'>{total_proyectos} proyectos activos · Pipeline <strong>${pipeline_total/1e9:.2f}B</strong></div>
     </div>""", unsafe_allow_html=True)
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("💰 Pipeline Total", f"${pipeline_total/1e9:.2f}B", f"{total_proyectos} proyectos")
+    c2.metric("🟡 Cotizados", cotizados)
+    c3.metric("🟠 Negociando / Aprobado", negociando, "cierre cercano")
+    c4.metric("🔴 Perdidos", perdidos)
+    c5.metric("🔨 En Ejecución", en_ejecucion)
+
+    st.markdown("### Resumen General del Pipeline")
+    col1, col2 = st.columns(2)
+    with col1:
+        grupos = {"Comercial":["lead","cotizado","negociacion","aprobado","perdido"],
+                  "Ejecución":["creacion_contrato","financiacion","obra","novedades_obra","entrega"],
+                  "Posventa":["mantenimiento","cerrado"]}
+        est_data = []
+        for grupo,estados in grupos.items():
+            n = df[df["estado"].isin(estados)].shape[0]
+            est_data.append({"Grupo":grupo, "n":n})
+        fig = px.bar(pd.DataFrame(est_data), x="Grupo", y="n", title="Proyectos por Etapa",
+                     color="Grupo", color_discrete_map={"Comercial":"#1A9FCC","Ejecución":"#00C896","Posventa":"#8B5CF6"})
+        fig.update_layout(plot_bgcolor="white", paper_bgcolor="white", showlegend=False, margin=dict(t=40,b=10))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.info(f"""
+        **Resumen Ejecutivo:**
+        - Total proyectos: **{total_proyectos}**
+        - Valor total pipeline: **${pipeline_total/1e9:.2f}B**
+        - En cierre cercano: **{negociando}**
+        - Perdidos: **{perdidos}**
+        - En ejecución: **{en_ejecucion}**
+        """)
+
+    if not ai_activa():
+        st.markdown('<div class="al-b">💡 IA sin configurar. Ve a ⚙️ Configuración.</div>', unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # LOGIN
@@ -355,6 +398,7 @@ def sidebar():
 # ══════════════════════════════════════════
 # PÁGINAS
 # ══════════════════════════════════════════
+
 def ask_ai(q, ctx=""):
     key = get_ai_key()
     if not key:
@@ -379,6 +423,7 @@ Responde en español colombiano, sé muy concreto, usa los nombres de los edific
         return response.choices[0].message.content
     except Exception as e:
         return f"⚠️ Error temporal con Groq: {str(e)}\n\nPuedes seguir usando la app normalmente."
+        
 def pg_proyectos():
     es_g=st.session_state.user["rol"]=="gerente"; df=mis_proyectos()
     hdr("📋","Proyectos","Pipeline comercial y ejecución completo")
