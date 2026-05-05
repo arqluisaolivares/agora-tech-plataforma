@@ -305,27 +305,37 @@ def pg_dashboard():
     es_g = u["rol"] == "gerente"
     df = mis_proyectos()
 
+    # Cálculos
     total_proyectos = len(df)
     pipeline_total = int(df["totalNum"].sum() or 0)
     cotizados = len(df[df["estado"] == "cotizado"])
     negociando = len(df[df["estado"].isin(["negociacion", "aprobado"])])
     perdidos = len(df[df["estado"] == "perdido"])
-    en_ejecucion = len(df[df["estado"].isin(["creacion_contrato","financiacion","obra","entrega"])])
+    en_obra = len(df[df["estado"] == "obra"])
+    cerrados = len(df[df["estado"] == "cerrado"])
 
+    # Header bonito
     st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 55%,#0E3D6B 100%);
-      border-radius:14px;padding:32px 40px;margin-bottom:32px;color:white;position:relative'>
-      <div style='font-family:Sora,sans-serif;font-size:28px;font-weight:800;color:#fff'>Dashboard · {datetime.now().strftime("%d %B %Y")}</div>
-      <div style='font-size:15px;color:rgba(255,255,255,.6)'>{total_proyectos} proyectos activos · Pipeline <strong>${pipeline_total/1e9:.2f}B</strong></div>
+      border-radius:14px;padding:28px 32px;margin-bottom:24px;color:white;overflow:hidden;position:relative'>
+      <div style='font-family:Sora,sans-serif;font-size:11px;font-weight:700;color:rgba(0,200,150,.8);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px'>
+        Dashboard · {datetime.now().strftime("%d %B %Y")}
+      </div>
+      <div style='font-family:Sora,sans-serif;font-size:24px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:6px'>
+        {"Vista General — Ágora Tech" if es_g else f"Hola, {u['nombre'].split()[0]} 👋"}
+      </div>
+      <div style='font-size:13px;color:rgba(255,255,255,.45)'>{total_proyectos} proyectos · Pipeline <strong>${pipeline_total/1e9:.2f}B</strong></div>
     </div>""", unsafe_allow_html=True)
 
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("💰 Pipeline Total", f"${pipeline_total/1e9:.2f}B", f"{total_proyectos} proyectos")
-    c2.metric("🟡 Cotizados", cotizados)
-    c3.metric("🟠 Negociando / Aprobado", negociando, "cierre cercano")
-    c4.metric("🔴 Perdidos", perdidos)
-    c5.metric("🔨 En Ejecución", en_ejecucion)
+    # KPIs grandes y coloridos
+    c1,c2,c3,c4,c5 = st.columns(5)
+    c1.markdown(f'<div class="kpi"><div class="kpi-label">Pipeline Total</div><div class="kpi-val g">${pipeline_total/1e9:.2f}B</div><div class="kpi-sub">{total_proyectos} proyectos</div></div>',unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi"><div class="kpi-label">Promedio</div><div class="kpi-val">${int(df["totalNum"].mean() or 0)/1e6:.1f}M</div><div class="kpi-sub">por proyecto</div></div>',unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi"><div class="kpi-label">Negociando / Aprobado</div><div class="kpi-val o">{negociando}</div><div class="kpi-sub">cierre cercano</div></div>',unsafe_allow_html=True)
+    c4.markdown(f'<div class="kpi"><div class="kpi-label">En Obra</div><div class="kpi-val o">{en_obra}</div><div class="kpi-sub">ejecución</div></div>',unsafe_allow_html=True)
+    c5.markdown(f'<div class="kpi"><div class="kpi-label">Cerrados</div><div class="kpi-val {"r" if cerrados==0 else "g"}">{cerrados}</div><div class="kpi-sub">{"⚠ urgente" if cerrados==0 else "excelente"}</div></div>',unsafe_allow_html=True)
 
-    st.markdown("### Resumen General del Pipeline")
+    # Gráficas lado a lado
+    st.markdown("<br>",unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
         grupos = {"Comercial":["lead","cotizado","negociacion","aprobado","perdido"],
@@ -341,17 +351,37 @@ def pg_dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        st.info(f"""
-        **Resumen Ejecutivo:**
-        - Total proyectos: **{total_proyectos}**
-        - Valor total pipeline: **${pipeline_total/1e9:.2f}B**
-        - En cierre cercano: **{negociando}**
-        - Perdidos: **{perdidos}**
-        - En ejecución: **{en_ejecucion}**
-        """)
+        if es_g:
+            dc = df[df["totalNum"]>0].groupby("comercial")["totalNum"].sum().reset_index()
+            dc["M"] = (dc["totalNum"]/1e6).round(1)
+            dc["Com"] = dc["comercial"].str.split().str[0]
+            fig2 = px.bar(dc.sort_values("M", ascending=True), x="M", y="Com", orientation="h",
+                          title="Pipeline por Comercial ($M)", color="M",
+                          color_continuous_scale=["#1A9FCC","#00C896"])
+            fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", coloraxis_showscale=False, margin=dict(t=40,b=10))
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            mis_est = df.groupby("estado").size().reset_index(name="n")
+            mis_est["Estado"] = mis_est["estado"].map(lambda x: ETAPAS.get(x, {"label":x})["label"])
+            fig2 = px.pie(mis_est, values="n", names="Estado", hole=0.48, title="Mis Proyectos")
+            fig2.update_layout(paper_bgcolor="white", margin=dict(t=40,b=10))
+            st.plotly_chart(fig2, use_container_width=True)
+
+    # Resumen + Alertas
+    st.markdown("### 🚨 Resumen Ejecutivo y Alertas")
+    st.info(f"""
+    **Pipeline actual:** ${pipeline_total/1e9:.2f}B  
+    **Cotizados:** {cotizados}  **En negociación:** {negociando}  **Perdidos:** {perdidos}  **En obra:** {en_obra}
+    """)
+
+    if es_g:
+        st.markdown('<div class="al-r">❗ <b>0 contratos cerrados.</b> Pipeline de $8.6B sin conversión. Revisar proceso de cierre.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="al-y">⚡ <b>Nomad 53 (David Conde / Rafael)</b> — reunión 30 abril. Llevar contrato.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="al-g">✅ <b>Bosque San Vicente</b> — asamblea 2 mayo. Única propuesta con financiamiento.</div>',unsafe_allow_html=True)
+    st.markdown('<div class="al-g">✅ <b>Tiara</b> — pasó primer filtro 24 abril. Agendar presentación.</div>',unsafe_allow_html=True)
 
     if not ai_activa():
-        st.markdown('<div class="al-b">💡 IA sin configurar. Ve a ⚙️ Configuración.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="al-b">💡 IA sin configurar. Ve a ⚙️ Configuración para activar correos y análisis.</div>',unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # LOGIN
