@@ -17,7 +17,7 @@ from google.oauth2.service_account import Credentials
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """Conecta con Google Sheets usando los Secrets"""
+    """Conecta con Google Sheets usando el ID (más estable)"""
     creds_info = st.secrets["gcp_service_account"]
     scopes = [
         "https://spreadsheets.google.com/feeds",
@@ -25,8 +25,12 @@ def get_worksheet():
     ]
     credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
     gc = gspread.authorize(credentials)
-    sh = gc.open("Ágora Tech CRM")      # ← Nombre exacto de tu hoja
-    return sh.worksheet("Hoja 1")       # ← Nombre de la pestaña (normalmente "Hoja 1")
+    
+    # ID de tu hoja (no cambiar)
+    spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
+    
+    sh = gc.open_by_key(spreadsheet_id)
+    return sh.worksheet("Hoja 1")       
 
 def cargar_proyectos():
     worksheet = get_worksheet()
@@ -47,7 +51,7 @@ def guardar_crm(df):
     worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
     st.toast("💾 Datos guardados correctamente en la nube (Google Sheets)", icon="✅")
 
-PROYECTOS_BASE = cargar_proyectos()
+PROYECTOS_BASE = []   # Ya no se usa (Google Sheets lo reemplaza)
 
 # ══════════════════════════════════════════
 # USUARIOS
