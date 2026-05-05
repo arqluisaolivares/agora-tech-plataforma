@@ -200,47 +200,33 @@ def activar_ia(key):
 
     try:
         genai.configure(api_key=key)
-        
-        # Probamos modelos en orden de estabilidad
-        modelos_a_probar = ["gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.0-flash-exp"]
-        
-        for modelo in modelos_a_probar:
-            try:
-                m = genai.GenerativeModel(modelo)
-                m.generate_content("OK")   # Prueba rápida
-                st.session_state["gemini_key"] = key
-                st.session_state["gemini_modelo"] = modelo
-                st.success(f"✅ ¡Gemini activado correctamente! (usando {modelo})")
-                return True
-            except:
-                continue
-                
-        st.error("Ningún modelo disponible con esta key")
-        return False
+        # Usamos el modelo más estable y disponible
+        modelo = "gemini-1.5-flash"
+        m = genai.GenerativeModel(modelo)
+        m.generate_content("OK")  # Prueba mínima
+
+        st.session_state["gemini_key"] = key
+        st.session_state["gemini_modelo"] = modelo
+        st.success("✅ ¡Gemini activado correctamente!")
+        return True
     except Exception as e:
-        st.error(f"Error al activar Gemini: {str(e)}")
+        st.error(f"❌ Error al activar Gemini: {str(e)}")
+        st.info("Prueba crear la clave nueva en: https://aistudio.google.com/app/apikey")
         return False
         
 def ask_ai(q, ctx=""):
     key = get_ai_key()
-    if not key: return "⚠️ IA no configurada. Ve a ⚙️ Configuración."
+    if not key:
+        return "⚠️ IA no configurada. Ve a ⚙️ Configuración."
     try:
         genai.configure(api_key=key)
-        modelo = st.session_state.get("gemini_modelo","gemini-2.0-flash")
-        m = genai.GenerativeModel(modelo, system_instruction=AI_SYSTEM)
-        prompt = f"DATOS CRM:\n{ctx[:20000]}\n\nSOLICITUD:\n{q}" if ctx else q
+        modelo = st.session_state.get("gemini_modelo", "gemini-1.5-flash")
+        m = genai.GenerativeModel(modelo)
+        prompt = f"DATOS CRM:\n{ctx[:15000]}\n\nSOLICITUD:\n{q}" if ctx else q
         r = m.generate_content(prompt)
         return r.text
     except Exception as e:
-        # Intentar con otro modelo
-        try:
-            genai.configure(api_key=key)
-            m = genai.GenerativeModel("gemini-1.5-flash", system_instruction=AI_SYSTEM)
-            prompt = f"DATOS CRM:\n{ctx[:20000]}\n\nSOLICITUD:\n{q}" if ctx else q
-            r = m.generate_content(prompt)
-            return r.text
-        except Exception as e2:
-            return f"Error IA: {e2}"
+        return f"⚠️ Error temporal de IA: {str(e)}\n\nPuedes seguir usando la app sin IA."
 
 # ══════════════════════════════════════════
 # SESSION STATE
