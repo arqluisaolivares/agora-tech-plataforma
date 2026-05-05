@@ -312,7 +312,6 @@ def pg_dashboard():
     contacto_frio = len(df[df["estado"] == "lead"])
     por_contactar = len(df[df["estado"].isin(["cotizado", "negociacion"])])
     pipeline_total = int(df["totalNum"].sum() or 0)
-    en_obra = len(df[df["estado"] == "obra"])
 
     # Header
     st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 55%,#0E3D6B 100%);
@@ -325,7 +324,7 @@ def pg_dashboard():
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # NÚMEROS GRANDES Y CLAROS (sin **)
+    # Números grandes y claros
     st.markdown("### Resumen General")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Total Edificios", total_edificios)
@@ -357,54 +356,33 @@ def pg_dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
     with col_g2:
-        if es_g:
-            dc = df[df["totalNum"]>0].groupby("comercial")["totalNum"].sum().reset_index()
-            dc["M"] = (dc["totalNum"]/1e6).round(1)
-            dc["Com"] = dc["comercial"].str.split().str[0]
-            fig2 = px.bar(dc.sort_values("M", ascending=True), x="M", y="Com", orientation="h",
-                          title="Pipeline por Comercial ($M)", color="M", color_continuous_scale=["#1A9FCC","#00C896"])
-            fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=40,b=10))
-            st.plotly_chart(fig2, use_container_width=True)
+        # Nueva gráfica: Cotizaciones entregadas por comercial
+        cot_por_com = df[df["estado"] == "cotizado"].groupby("comercial").size().reset_index(name="Cantidad")
+        cot_por_com = cot_por_com.sort_values("Cantidad", ascending=False)
+        fig2 = px.bar(cot_por_com, x="Cantidad", y="comercial", orientation="h",
+                      title="Cotizaciones Entregadas por Comercial", 
+                      color="Cantidad", color_continuous_scale=["#1A9FCC","#00C896"])
+        fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=40,b=10))
+        st.plotly_chart(fig2, use_container_width=True)
 
-    # Alertas por Comercial (en cubos / tarjetas)
+    # Alertas por Comercial (con espacio para 3 edificios)
     st.markdown("### 🚨 Alertas por Comercial")
     if es_g:
         alertas = {
-            "Rafael Torres": ["Nomad 53 — reunión pendiente con David Conde"],
-            "Sonia Castro": ["Bosque San Vicente — asamblea 2 mayo"],
-            "Lina Calle": ["Tiara — pasó primer filtro"],
+            "Rafael Torres": ["Nomad 53 — reunión pendiente", "Edificio Altos del Pino — seguimiento", "Plazoleta 75 — llamada pendiente"],
+            "Sonia Castro": ["Bosque San Vicente — asamblea 2 mayo", "Sin más alertas"],
+            "Lina Calle": ["Tiara — pasó primer filtro", "Sin más alertas"],
             "Alberto Ferrer": ["Sin alertas pendientes"],
             "Santiago Bohórquez": ["Sin alertas pendientes"]
         }
         for comercial, lista in alertas.items():
             with st.expander(f"**{comercial}**", expanded=True):
-                for alerta in lista:
+                for i, alerta in enumerate(lista[:3]):   # máximo 3
                     st.markdown(f'<div class="al-y">⚡ {alerta}</div>', unsafe_allow_html=True)
+                if len(lista) > 3:
+                    st.caption(f"+ {len(lista)-3} alertas más")
     else:
-        st.markdown('<div class="al-y">⚡ Tienes alertas pendientes en tus proyectos</div>', unsafe_allow_html=True)
-
-    # Cotizaciones Presentadas por Mes (usando la columna "fecha")
-    st.markdown("### 📅 Cotizaciones Presentadas por Mes")
-    if not df.empty:
-        df_copy = df.copy()
-        # Usamos la columna "fecha" que tienes en el Excel
-        if "fecha" in df_copy.columns:
-            df_copy["mes"] = pd.to_datetime(df_copy["fecha"], errors='coerce').dt.strftime("%b %Y")
-        else:
-            df_copy["mes"] = pd.to_datetime(df_copy.get("lastUpdate", pd.Series([datetime.now()]))).dt.strftime("%b %Y")
-        
-        cot_por_mes = df_copy[df_copy["estado"].isin(["cotizado", "negociacion"])].groupby("mes").size().reset_index(name="Cantidad")
-        cot_por_mes = cot_por_mes.sort_values("mes")
-        
-        if not cot_por_mes.empty:
-            fig_mes = px.bar(cot_por_mes, x="mes", y="Cantidad", title="Cotizaciones Presentadas por Mes",
-                             color_discrete_sequence=["#00C896"])
-            fig_mes.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=30,b=10))
-            st.plotly_chart(fig_mes, use_container_width=True)
-        else:
-            st.info("No hay cotizaciones registradas aún este año.")
-    else:
-        st.info("No hay datos de proyectos.")
+        st.markdown('<div class="al-y">⚡ Revisa tus proyectos pendientes</div>', unsafe_allow_html=True)
 
     if not ai_activa():
         st.markdown('<div class="al-b">💡 IA sin configurar. Ve a ⚙️ Configuración.</div>', unsafe_allow_html=True)
