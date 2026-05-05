@@ -194,14 +194,14 @@ def ask_ai(q, ctx=""):
 Sistema SALTO HomeLok. Financiación 100% sin intereses. Responde en español colombiano.
 {q}"""
         response = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",   # Modelo actualizado
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=1200
+            max_tokens=1500
         )
         return response.choices[0].message.content
     except Exception as e:
-        return f"⚠️ Error temporal con Groq: {str(e)}\n\nPuedes seguir usando la app."
+        return f"⚠️ Error temporal con Groq: {str(e)}\n\nPuedes seguir usando la app normalmente."
         
 # ══════════════════════════════════════════
 # SESSION STATE
