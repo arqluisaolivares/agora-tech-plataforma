@@ -69,12 +69,6 @@ def guardar_crm(df):
         except:
             pass
     st.toast("💾 Cambios guardados en memoria (Google Sheets no disponible)", icon="⚠️")
-def guardar_crm(df):
-    """Guarda todo el CRM en Google Sheets"""
-    worksheet = get_worksheet()
-    worksheet.clear()
-    worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
-    st.toast("💾 Datos guardados correctamente en la nube (Google Sheets)", icon="✅")
 
 PROYECTOS_BASE = []   # Ya no se usa (Google Sheets lo reemplaza)
 
