@@ -324,14 +324,44 @@ def pg_dashboard():
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # RESUMEN GENERAL CON NÚMEROS EN NEGRILLA GRANDE
+    # RESUMEN GENERAL - NÚMEROS GRANDES Y TÍTULOS MÁS GRANDES
     st.markdown("### Resumen General")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{total_edificios}**</div><div style="font-size:12px;color:#8BA3BD">Total Edificios</div></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{activos}**</div><div style="font-size:12px;color:#8BA3BD">Activos</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{cotizados}**</div><div style="font-size:12px;color:#8BA3BD">Cotizados</div></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{contacto_frio}**</div><div style="font-size:12px;color:#8BA3BD">Contacto Frío</div></div>', unsafe_allow_html=True)
-    c5.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{por_contactar}**</div><div style="font-size:12px;color:#8BA3BD">Por Contactar</div></div>', unsafe_allow_html=True)
+
+    c1.markdown(f'''
+        <div style="text-align:center">
+            <div style="font-size:48px; font-weight:800; color:#04111E">{total_edificios}</div>
+            <div style="font-size:15px; font-weight:700; color:#8BA3BD">Total Edificios</div>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    c2.markdown(f'''
+        <div style="text-align:center">
+            <div style="font-size:48px; font-weight:800; color:#04111E">{activos}</div>
+            <div style="font-size:15px; font-weight:700; color:#8BA3BD">Activos</div>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    c3.markdown(f'''
+        <div style="text-align:center">
+            <div style="font-size:48px; font-weight:800; color:#04111E">{cotizados}</div>
+            <div style="font-size:15px; font-weight:700; color:#8BA3BD">Cotizados</div>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    c4.markdown(f'''
+        <div style="text-align:center">
+            <div style="font-size:48px; font-weight:800; color:#04111E">{contacto_frio}</div>
+            <div style="font-size:15px; font-weight:700; color:#8BA3BD">Contacto Frío</div>
+        </div>
+    ''', unsafe_allow_html=True)
+
+    c5.markdown(f'''
+        <div style="text-align:center">
+            <div style="font-size:48px; font-weight:800; color:#04111E">{por_contactar}</div>
+            <div style="font-size:15px; font-weight:700; color:#8BA3BD">Por Contactar</div>
+        </div>
+    ''', unsafe_allow_html=True)
 
     # Pipeline grande
     st.markdown("### 💰 Pipeline")
@@ -364,13 +394,13 @@ def pg_dashboard():
         fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=40,b=10))
         st.plotly_chart(fig2, use_container_width=True)
 
-    # Alertas por Comercial (con espacio para 3 edificios)
+    # Alertas por Comercial
     st.markdown("### 🚨 Alertas por Comercial")
     if es_g:
         alertas = {
             "Rafael Torres": ["Nomad 53 — reunión pendiente", "Edificio Altos del Pino — seguimiento", "Plazoleta 75 — llamada pendiente"],
-            "Sonia Castro": ["Bosque San Vicente — asamblea 2 mayo", "Sin más alertas"],
-            "Lina Calle": ["Tiara — pasó primer filtro", "Sin más alertas"],
+            "Sonia Castro": ["Bosque San Vicente — asamblea 2 mayo"],
+            "Lina Calle": ["Tiara — pasó primer filtro"],
             "Alberto Ferrer": ["Sin alertas pendientes"],
             "Santiago Bohórquez": ["Sin alertas pendientes"]
         }
