@@ -166,53 +166,42 @@ div[data-testid="stForm"]{border:none!important;padding:0!important}
 """, unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
-# IA — GEMINI
+# IA — GROQ (más rápida y estable)
 # ══════════════════════════════════════════
-AI_SYSTEM = """Eres el asistente comercial experto de Ágora Tech Colombia.
-Sistema SALTO HomeLok (nube, Bluetooth, PIN, QR, app iOS/Android).
-Financiación 100% a 24/36 meses sin intereses. Llave en mano 40 días.
-Garantía 36 meses equipos / 12 meses adecuaciones.
-Proceso: 1)Visita técnica 2)Aprobación asamblea 3)Instalación 40 días 4)Capacitación y entrega.
-Pipeline: 84 proyectos, $8.6B en cotizaciones, 0 contratos cerrados.
-Proyectos clave: Nomad 53 (David Conde/Rafael) cierre cercano; Bosque San Vicente asamblea 2 mayo; Tiara pasó primer filtro.
-Rechazos frecuentes: adultos mayores (solución: teclado PIN físico con relieve, sin smartphone), precio alto (solución: mostrar ahorro vs vigilancia), seguridad percibida.
-Precios base: Adecuaciones $18.8M. Lectora vidrio $4.2M. Segunda puerta vidrio $10.8M. CCTV $13.8M. Mantenimiento $966.400+IVA/mes.
-Responde en español colombiano. Sé específico, accionable y usa datos reales."""
-
-GEMINI_MODELS = ["gemini-2.0-flash","gemini-1.5-flash","gemini-1.5-flash-latest"]
-
 def get_ai_key():
-    k = st.session_state.get("gemini_key","")
-    if k and len(k) > 10: return k
-    try:
-        k = st.secrets.get("GEMINI_API_KEY","") or st.secrets.get("GOOGLE_API_KEY","")
-        if k: st.session_state["gemini_key"] = k; return k
-    except: pass
-    return ""
+    return st.secrets.get("GROQ_API_KEY", st.session_state.get("groq_key", ""))
 
-def ai_activa(): return len(get_ai_key()) > 10
+def ai_activa():
+    return bool(get_ai_key())
 
 def activar_ia(key):
     key = key.strip()
-    if not key or len(key) < 20:
-        st.error("Key inválida — debe tener más de 20 caracteres")
+    if not key:
+        st.error("Pega tu API Key de Groq")
         return False
+    st.session_state["groq_key"] = key
+    st.success("✅ ¡Groq activado correctamente!")
+    return True
 
+def ask_ai(q, ctx=""):
+    key = get_ai_key()
+    if not key:
+        return "⚠️ IA no configurada. Ve a ⚙️ Configuración y pega tu clave de Groq."
     try:
-        genai.configure(api_key=key)
-        # Usamos el modelo más estable y disponible
-        modelo = "gemini-1.5-flash"
-        m = genai.GenerativeModel(modelo)
-        m.generate_content("OK")  # Prueba mínima
-
-        st.session_state["gemini_key"] = key
-        st.session_state["gemini_modelo"] = modelo
-        st.success("✅ ¡Gemini activado correctamente!")
-        return True
+        from groq import Groq
+        client = Groq(api_key=key)
+        prompt = f"""Eres el asistente comercial experto de Ágora Tech Colombia.
+Sistema SALTO HomeLok. Financiación 100% sin intereses. Responde en español colombiano.
+{q}"""
+        response = client.chat.completions.create(
+            model="llama3-70b-8192",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+            max_tokens=1200
+        )
+        return response.choices[0].message.content
     except Exception as e:
-        st.error(f"❌ Error al activar Gemini: {str(e)}")
-        st.info("Prueba crear la clave nueva en: https://aistudio.google.com/app/apikey")
-        return False
+        return f"⚠️ Error temporal con Groq: {str(e)}\n\nPuedes seguir usando la app."
         
 def ask_ai(q, ctx=""):
     key = get_ai_key()
@@ -896,27 +885,23 @@ def pg_configuracion():
         st.markdown(f'<div style="font-size:12px;color:#8BA3BD">Key activa: AIzaSy...{key_actual[-4:]}</div>',unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("#### 🔑 Activar IA con Google Gemini")
+    st.markdown("#### 🔑 Activar IA con Groq (recomendado)")
     st.markdown("""<div style='background:#F6F9FC;border:1px solid #E3EAF3;border-radius:10px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:#4A6580'>
-      <b>Tu API Key de Gemini</b> (proyecto agora-tech-personal con $300 de crédito):<br>
-      1. Ve a <b>console.cloud.google.com/apis/credentials?project=agora-tech-personal</b><br>
-      2. Busca tu clave creada → cópiala (empieza con AIzaSy...)<br>
-      3. Pégala abajo y haz clic en Activar IA
-    </div>""",unsafe_allow_html=True)
+      Pega tu clave de Groq (empieza con gsk_...)<br>
+      La puedes crear en: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a>
+    </div>""", unsafe_allow_html=True)
 
     with st.form("config_ia_form"):
-        nueva_key=st.text_input("API Key de Google Gemini *",placeholder="AIzaSy...",
-            help="La key de Google Gemini empieza con AIzaSy y tiene ~39 caracteres")
-        if nueva_key:
-            n=len(nueva_key.strip())
-            if n<30: st.warning(f"⚠️ La key tiene {n} caracteres — parece incompleta (debe tener ~39)")
-            else: st.success(f"✅ Key de {n} caracteres — longitud correcta")
-        if st.form_submit_button("⚡ Activar IA con Gemini",use_container_width=True):
-            if not nueva_key.strip(): st.error("Pega la API Key")
+        nueva_key = st.text_input("API Key de Groq *", placeholder="gsk_...")
+        if st.form_submit_button("⚡ Activar IA con Groq", use_container_width=True):
+            if not nueva_key.strip():
+                st.error("Pega la API Key")
             else:
-                with st.spinner("Verificando con Google..."):
-                    ok=activar_ia(nueva_key)
-                if ok: st.success("✅ ¡Gemini activo! Correos, asistente e informes ya funcionan."); st.balloons(); st.rerun()
+                with st.spinner("Verificando..."):
+                    ok = activar_ia(nueva_key)
+                if ok:
+                    st.balloons()
+                    st.rerun()
 
     if es_g:
         st.markdown("---")
