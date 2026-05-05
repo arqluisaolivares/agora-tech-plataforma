@@ -190,12 +190,20 @@ def ask_ai(q, ctx=""):
     try:
         from groq import Groq
         client = Groq(api_key=key)
-        prompt = f"""Eres el asistente comercial experto de Ágora Tech Colombia.
-Sistema SALTO HomeLok. Financiación 100% sin intereses. Responde en español colombiano.
-{q}"""
+        
+        full_prompt = f"""Eres el asistente comercial experto de Ágora Tech Colombia.
+
+CONTEXTO COMPLETO DEL CRM (proyectos, estados, notas, pipeline):
+{ctx if ctx else "No hay datos de proyectos disponibles."}
+
+SOLICITUD DEL USUARIO:
+{q}
+
+Responde en español colombiano, sé concreto, accionable y usa los datos reales del contexto (estados, notas, comerciales, valores, etc.)."""
+
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",   # Modelo actualizado
-            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": full_prompt}],
             temperature=0.7,
             max_tokens=1500
         )
@@ -309,11 +317,7 @@ def pg_login():
                 if u in usuarios and usuarios[u]["activo"] and usuarios[u]["pass"]==password:
                     st.session_state.logged_in=True; st.session_state.user=usuarios[u]; st.rerun()
                 else: st.error("Usuario o contraseña incorrectos")
-        st.markdown("""<div style='background:#F6F9FC;border:1px solid #E3EAF3;border-radius:10px;
-             padding:12px 16px;margin-top:12px;font-size:11.5px;color:#8BA3BD;text-align:center'>
-          luisa/luisa2026 · rafael/rafael2026 · sonia/sonia2026<br>lina/lina2026 · alberto/alberto2026 · santiago/santiago2026
-        </div>""", unsafe_allow_html=True)
-
+        
 # ══════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════
@@ -351,66 +355,30 @@ def sidebar():
 # ══════════════════════════════════════════
 # PÁGINAS
 # ══════════════════════════════════════════
-def pg_dashboard():
-    u=st.session_state.user; es_g=u["rol"]=="gerente"; df=mis_proyectos()
-    st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 55%,#0E3D6B 100%);
-      border-radius:14px;padding:28px 32px;margin-bottom:24px;color:white;overflow:hidden;position:relative'>
-      <div style='position:absolute;top:-60px;right:-60px;width:220px;height:220px;border-radius:50%;
-           background:radial-gradient(circle,rgba(0,200,150,.18) 0%,transparent 70%)'></div>
-      <div style='font-family:Sora,sans-serif;font-size:11px;font-weight:700;color:rgba(0,200,150,.8);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px'>Dashboard · {datetime.now().strftime("%d %B %Y")}</div>
-      <div style='font-family:Sora,sans-serif;font-size:24px;font-weight:800;color:#fff;letter-spacing:-1px;margin-bottom:6px'>{"Vista General — Ágora Tech" if es_g else f"Hola, {u['nombre'].split()[0]} 👋"}</div>
-      <div style='font-size:13px;color:rgba(255,255,255,.45)'>{len(df)} proyectos · Pipeline ${int(df["totalNum"].sum())/1e9:.2f}B</div>
-    </div>""", unsafe_allow_html=True)
+def ask_ai(q, ctx=""):
+    key = get_ai_key()
+    if not key:
+        return "⚠️ IA no configurada. Ve a ⚙️ Configuración y pega tu clave de Groq."
+    try:
+        from groq import Groq
+        client = Groq(api_key=key)
+        
+        full_context = f"""CONTEXTO COMPLETO DEL CRM (usa esta información siempre):
+{ctx if ctx else "Sin datos de proyectos disponibles."}
 
-    total=int(df["totalNum"].sum()); con_v=df[df["totalNum"]>0]
-    prom=int(con_v["totalNum"].mean()) if len(con_v) else 0
-    en_obra=int(df[df["estado"]=="obra"].shape[0])
-    negoc=int(df[df["estado"].isin(["negociacion","aprobado"])].shape[0])
-    cerr=int(df[df["estado"]=="cerrado"].shape[0])
+SOLICITUD DEL USUARIO: {q}
 
-    c1,c2,c3,c4,c5=st.columns(5)
-    c1.markdown(f'<div class="kpi"><div class="kpi-label">Pipeline Total</div><div class="kpi-val g">${total/1e9:.2f}B</div><div class="kpi-sub">{len(df)} proyectos</div></div>',unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi"><div class="kpi-label">Promedio</div><div class="kpi-val">${prom/1e6:.1f}M</div><div class="kpi-sub">{len(con_v)} con valor</div></div>',unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi"><div class="kpi-label">Negociando/Aprobado</div><div class="kpi-val o">{negoc}</div><div class="kpi-sub">cierre cercano</div></div>',unsafe_allow_html=True)
-    c4.markdown(f'<div class="kpi"><div class="kpi-label">En Ejecución</div><div class="kpi-val o">{en_obra}</div><div class="kpi-sub">en obra</div></div>',unsafe_allow_html=True)
-    c5.markdown(f'<div class="kpi"><div class="kpi-label">Cerrados</div><div class="kpi-val {"r" if cerr==0 else "g"}">{cerr}</div><div class="kpi-sub">{"⚠ urgente" if cerr==0 else "excelente"}</div></div>',unsafe_allow_html=True)
+Responde en español colombiano, sé muy concreto, usa los nombres de los edificios, estados reales, valores y notas recientes cuando sea relevante."""
 
-    st.markdown("<br>",unsafe_allow_html=True)
-    c1,c2=st.columns(2)
-    with c1:
-        grupos={"Comercial":["lead","cotizado","negociacion","aprobado","perdido"],"Ejecución":["creacion_contrato","financiacion","obra","novedades_obra","entrega"],"Posventa":["mantenimiento","cerrado"]}
-        est_data=[]
-        for grupo,estados in grupos.items():
-            n=df[df["estado"].isin(estados)].shape[0]
-            est_data.append({"Grupo":grupo,"n":n})
-        fig=px.bar(pd.DataFrame(est_data),x="Grupo",y="n",title="Proyectos por Etapa",
-                   color="Grupo",color_discrete_map={"Comercial":"#1A9FCC","Ejecución":"#00C896","Posventa":"#8B5CF6"},
-                   labels={"n":"Proyectos"})
-        fig.update_layout(plot_bgcolor="white",paper_bgcolor="white",showlegend=False,margin=dict(t=40,b=10))
-        st.plotly_chart(fig,use_container_width=True)
-    with c2:
-        if es_g:
-            dc=df[df["totalNum"]>0].groupby("comercial")["totalNum"].sum().reset_index()
-            dc["M"]=(dc["totalNum"]/1e6).round(1); dc["Com"]=dc["comercial"].str.split().str[0]
-            fig2=px.bar(dc.sort_values("M",ascending=True),x="M",y="Com",orientation="h",
-                        title="Pipeline por Comercial ($M)",color="M",color_continuous_scale=["#1A9FCC","#00C896"],labels={"M":"$M","Com":""})
-            fig2.update_layout(plot_bgcolor="white",paper_bgcolor="white",coloraxis_showscale=False,margin=dict(t=40,b=10))
-        else:
-            mis_est=df.groupby("estado").size().reset_index(name="n")
-            mis_est["Estado"]=mis_est["estado"].map(lambda x: ETAPAS.get(x,{"label":x})["label"])
-            fig2=px.pie(mis_est,values="n",names="Estado",hole=0.48,title="Mis Proyectos")
-            fig2.update_layout(paper_bgcolor="white",margin=dict(t=40,b=10))
-        st.plotly_chart(fig2,use_container_width=True)
-
-    st.markdown("### 🚨 Alertas")
-    if es_g:
-        st.markdown('<div class="al-r">❗ <b>0 contratos cerrados.</b> Pipeline de $8.6B sin conversión. Revisar proceso de cierre.</div>',unsafe_allow_html=True)
-    st.markdown('<div class="al-y">⚡ <b>Nomad 53 (David Conde / Rafael)</b> — reunión 30 abril. Llevar contrato.</div>',unsafe_allow_html=True)
-    st.markdown('<div class="al-g">✅ <b>Bosque San Vicente</b> — asamblea 2 mayo. Única propuesta con financiamiento.</div>',unsafe_allow_html=True)
-    st.markdown('<div class="al-g">✅ <b>Tiara</b> — pasó primer filtro 24 abril. Agendar presentación.</div>',unsafe_allow_html=True)
-    if not ai_activa():
-        st.markdown('<div class="al-b">💡 <b>IA sin configurar.</b> Ve a ⚙️ Configuración para activar correos y análisis.</div>',unsafe_allow_html=True)
-
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": full_context}],
+            temperature=0.7,
+            max_tokens=1600
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"⚠️ Error temporal con Groq: {str(e)}\n\nPuedes seguir usando la app normalmente."
 def pg_proyectos():
     es_g=st.session_state.user["rol"]=="gerente"; df=mis_proyectos()
     hdr("📋","Proyectos","Pipeline comercial y ejecución completo")
