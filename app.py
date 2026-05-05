@@ -324,14 +324,14 @@ def pg_dashboard():
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # Números grandes y claros
+    # RESUMEN GENERAL CON NÚMEROS EN NEGRILLA GRANDE
     st.markdown("### Resumen General")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Edificios", total_edificios)
-    c2.metric("Activos", activos)
-    c3.metric("Cotizados", cotizados)
-    c4.metric("Contacto Frío", contacto_frio)
-    c5.metric("Por Contactar", por_contactar)
+    c1.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{total_edificios}**</div><div style="font-size:12px;color:#8BA3BD">Total Edificios</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{activos}**</div><div style="font-size:12px;color:#8BA3BD">Activos</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{cotizados}**</div><div style="font-size:12px;color:#8BA3BD">Cotizados</div></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{contacto_frio}**</div><div style="font-size:12px;color:#8BA3BD">Contacto Frío</div></div>', unsafe_allow_html=True)
+    c5.markdown(f'<div style="text-align:center"><div style="font-size:32px;font-weight:800;color:#04111E">**{por_contactar}**</div><div style="font-size:12px;color:#8BA3BD">Por Contactar</div></div>', unsafe_allow_html=True)
 
     # Pipeline grande
     st.markdown("### 💰 Pipeline")
@@ -356,7 +356,6 @@ def pg_dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
     with col_g2:
-        # Nueva gráfica: Cotizaciones entregadas por comercial
         cot_por_com = df[df["estado"] == "cotizado"].groupby("comercial").size().reset_index(name="Cantidad")
         cot_por_com = cot_por_com.sort_values("Cantidad", ascending=False)
         fig2 = px.bar(cot_por_com, x="Cantidad", y="comercial", orientation="h",
@@ -377,16 +376,14 @@ def pg_dashboard():
         }
         for comercial, lista in alertas.items():
             with st.expander(f"**{comercial}**", expanded=True):
-                for i, alerta in enumerate(lista[:3]):   # máximo 3
+                for alerta in lista[:3]:
                     st.markdown(f'<div class="al-y">⚡ {alerta}</div>', unsafe_allow_html=True)
-                if len(lista) > 3:
-                    st.caption(f"+ {len(lista)-3} alertas más")
     else:
         st.markdown('<div class="al-y">⚡ Revisa tus proyectos pendientes</div>', unsafe_allow_html=True)
 
     if not ai_activa():
         st.markdown('<div class="al-b">💡 IA sin configurar. Ve a ⚙️ Configuración.</div>', unsafe_allow_html=True)
-
+        
 # ══════════════════════════════════════════
 # LOGIN
 # ══════════════════════════════════════════
