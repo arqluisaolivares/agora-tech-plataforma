@@ -63,17 +63,19 @@ def cargar_proyectos():
     return []
 
 def guardar_crm(df):
-    """Guarda en Google Sheets. Si falla, guarda en proyectos.json y muestra el error exacto"""
+    """Intenta guardar en Google Sheets. Si falla, muestra el error exacto y guarda en JSON"""
     worksheet = get_worksheet()
-    
+
     if worksheet is not None:
         try:
-            # Opción más segura: agregar solo la nueva fila en lugar de borrar todo
-            worksheet.append_row(df.iloc[-1].fillna("").tolist(), value_input_option="RAW")
-            st.toast("💾 Guardado correctamente en Google Sheets (nueva fila)", icon="✅")
+            # Tomamos solo la última fila (la cotización nueva)
+            ultima_fila = df.iloc[-1].fillna("").tolist()
+            worksheet.append_row(ultima_fila, value_input_option="RAW")
+            st.toast("✅ Guardado correctamente en Google Sheets (nueva fila)", icon="✅")
             return
         except Exception as e:
-            st.error(f"❌ Error al escribir en Google Sheets: {str(e)}")
+            error_msg = str(e)
+            st.error(f"❌ Error al guardar en Google Sheets: {error_msg}")
             st.warning("Se guardó en el archivo local como respaldo")
 
     # Fallback al archivo local
