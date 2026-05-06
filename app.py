@@ -1082,44 +1082,77 @@ def pg_pipeline():
                 st.markdown(f'<div style="background:#F0FDF9;border-radius:6px;padding:8px;margin-bottom:6px;font-size:11px;font-weight:700">{str(r["nombre"])[:20]}</div>',unsafe_allow_html=True)
 
 def pg_usuarios():
-    hdr("👥","Gestión de Usuarios","Solo gerente")
-    usuarios=get_usuarios()
-    for ukey,ud in usuarios.items():
-        activo=ud.get("activo",True)
-        cols=st.columns([2,2,1.5,1,1,1])
-        cols[0].markdown(f"**{ud['nombre']}**"); cols[1].markdown(f"`{ukey}`")
-        cols[2].markdown(ud["rol"].capitalize())
-        cols[3].markdown(f'<span style="background:{"#D1FAF0" if activo else "#FEE2E2"};padding:2px 8px;border-radius:10px;font-size:11px">{"Activo" if activo else "Inactivo"}</span>',unsafe_allow_html=True)
-        if cols[4].button("✏️",key=f"edit_{ukey}"): st.session_state["editing_user"]=ukey
-        if cols[5].button("🔒" if activo else "🔓",key=f"tog_{ukey}"):
-            st.session_state.usuarios_db[ukey]["activo"]=not activo; st.rerun()
-        st.markdown('<div style="border-bottom:1px solid #E3EAF3;margin:6px 0"></div>',unsafe_allow_html=True)
-    editing=st.session_state.get("editing_user","")
-    if editing and editing in usuarios:
-        ud_e=usuarios[editing]
-        with st.form("edit_user_form"):
-            st.markdown(f"**Editando: {ud_e['nombre']}**")
-            c1,c2=st.columns(2)
-            with c1: new_n=st.text_input("Nombre",value=ud_e["nombre"]); new_p=st.text_input("Nueva contraseña (vacío=no cambiar)",type="password")
-            with c2:
-                new_r=st.selectbox("Rol",["gerente","comercial"],index=0 if ud_e["rol"]=="gerente" else 1)
-                new_c=st.selectbox("Comercial",COMS,index=COMS.index(ud_e["comercial"]) if ud_e["comercial"] in COMS else 0)
-            if st.form_submit_button("💾 Guardar",use_container_width=True):
-                st.session_state.usuarios_db[editing].update({"nombre":new_n,"rol":new_r,"comercial":new_c})
-                if new_p: st.session_state.usuarios_db[editing]["pass"]=new_p
-                st.success("✅ Actualizado"); st.session_state.pop("editing_user",None); st.rerun()
+    hdr("👥","Gestión de Usuarios","Solo gerente - Cambio de contraseñas inmediato")
+
+    usuarios = get_usuarios()
+
+    # Tabla clara de usuarios
+    st.markdown("### Usuarios registrados")
+    data = []
+    for ukey, ud in usuarios.items():
+        data.append({
+            "Usuario": ukey,
+            "Nombre": ud["nombre"],
+            "Rol": ud["rol"].capitalize(),
+            "Comercial": ud["comercial"],
+            "Estado": "✅ Activo" if ud.get("activo", True) else "🔴 Inactivo"
+        })
+    st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+
+    # ========================
+    # CAMBIAR CONTRASEÑA (fácil y rápido)
+    # ========================
+    st.markdown("### 🔑 Cambiar contraseña de un usuario")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        usuario_seleccionado = st.selectbox(
+            "Seleccionar usuario", 
+            options=list(usuarios.keys()),
+            format_func=lambda x: f"{x} — {usuarios[x]['nombre']}"
+        )
+    with col2:
+        nueva_contrasena = st.text_input("Nueva contraseña", type="password", key="nueva_pass_input")
+
+    if st.button("💾 Cambiar contraseña", type="primary", use_container_width=True):
+        if nueva_contrasena.strip():
+            st.session_state.usuarios_db[usuario_seleccionado]["pass"] = nueva_contrasena.strip()
+            nombre = usuarios[usuario_seleccionado]["nombre"]
+            st.success(f"✅ Contraseña de **{nombre}** actualizada correctamente.\n"
+                       f"El cambio es inmediato: {nombre} ya no podrá entrar con la contraseña anterior.")
+            st.rerun()
+        else:
+            st.error("Por favor ingresa una nueva contraseña")
+
     st.markdown("---")
+
+    # ========================
+    # Crear nuevo usuario
+    # ========================
+    st.markdown("### ➕ Crear nuevo usuario")
     with st.form("add_user_form"):
-        st.markdown("**➕ Nuevo usuario**")
-        c1,c2=st.columns(2)
-        with c1: nu_user=st.text_input("Usuario *"); nu_nombre=st.text_input("Nombre completo *"); nu_pass=st.text_input("Contraseña *",type="password")
-        with c2: nu_rol=st.selectbox("Rol",["comercial","gerente"]); nu_com=st.selectbox("Comercial",COMS)
-        if st.form_submit_button("➕ Crear",use_container_width=True):
-            if not nu_user or not nu_nombre or not nu_pass: st.error("Todos los campos obligatorios")
-            elif nu_user.lower() in usuarios: st.error(f"'{nu_user}' ya existe")
+        c1, c2 = st.columns(2)
+        with c1:
+            nu_user = st.text_input("Usuario *")
+            nu_nombre = st.text_input("Nombre completo *")
+            nu_pass = st.text_input("Contraseña *", type="password")
+        with c2:
+            nu_rol = st.selectbox("Rol", ["comercial", "gerente"])
+            nu_com = st.selectbox("Comercial", COMS)
+        if st.form_submit_button("Crear usuario", use_container_width=True):
+            if not nu_user or not nu_nombre or not nu_pass:
+                st.error("Todos los campos son obligatorios")
+            elif nu_user.lower() in usuarios:
+                st.error(f"El usuario '{nu_user}' ya existe")
             else:
-                st.session_state.usuarios_db[nu_user.lower()]={"pass":nu_pass,"nombre":nu_nombre,"rol":nu_rol,"comercial":nu_com,"activo":True}
-                st.success(f"✅ Usuario **{nu_user}** creado"); st.rerun()
+                st.session_state.usuarios_db[nu_user.lower()] = {
+                    "pass": nu_pass,
+                    "nombre": nu_nombre,
+                    "rol": nu_rol,
+                    "comercial": nu_com,
+                    "activo": True
+                }
+                st.success(f"✅ Usuario **{nu_user}** creado correctamente")
+                st.rerun()
 
 # ══════════════════════════════════════════
 # MAIN
