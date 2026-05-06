@@ -17,24 +17,44 @@ from google.oauth2.service_account import Credentials
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """VERSIÓN DE DIAGNÓSTICO - muestra exactamente qué secretos tiene Streamlit"""
+    """DIAGNÓSTICO DEFINITIVO - muestra exactamente dónde falla"""
+    st.error("🔍 DEBUG: Iniciando conexión a Google Sheets...")
+
     try:
-        # Esto nos dirá qué secretos están realmente cargados
-        st.error("🔍 DEBUG: Secretos disponibles en esta app:")
-        st.write(list(st.secrets.keys()))
-        
+        # Paso 1: Verificar que el secreto existe
+        if "gcp_service_account" not in st.secrets:
+            st.error("❌ No existe el secreto 'gcp_service_account'")
+            return None
+        st.success("✅ Secreto 'gcp_service_account' encontrado")
+
         creds_info = st.secrets["gcp_service_account"]
+        st.success(f"✅ Credenciales cargadas. Claves: {list(creds_info.keys())}")
+
+        # Paso 2: Verificar private_key
+        if "private_key" not in creds_info:
+            st.error("❌ No hay 'private_key' en el secreto")
+            return None
+        pk = creds_info["private_key"]
+        st.success(f"✅ private_key encontrado (empieza con: {pk[:50]}...)")
+
+        # Paso 3: Crear credenciales
         scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
-        gc = gspread.authorize(credentials)
-        sh = gc.open_by_key("1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE")
-        worksheet = sh.worksheet("Hoja 1")
-        st.success("✅ Conexión a Google Sheets exitosa")
-        return worksheet
-    except Exception as e:
-        st.error(f"❌ Error real: {str(e)}")
-        return None
+        st.success("✅ Credenciales creadas correctamente")
 
+        # Paso 4: Conectar
+        gc = gspread.authorize(credentials)
+        spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
+        sh = gc.open_by_key(spreadsheet_id)
+        worksheet = sh.worksheet("Hoja 1")
+        st.success("✅ ¡CONEXIÓN A GOOGLE SHEETS EXITOSA!")
+        return worksheet
+
+    except Exception as e:
+        st.error(f"❌ Error real: {type(e).__name__}: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
+        return None
 def cargar_proyectos():
     """Carga desde Google Sheets o fallback a JSON"""
     worksheet = get_worksheet()
