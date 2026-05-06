@@ -17,7 +17,7 @@ from google.oauth2.service_account import Credentials
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """Intenta conectar con Google Sheets"""
+    """Versión de diagnóstico - muestra exactamente qué falla"""
     try:
         creds_info = st.secrets["gcp_service_account"]
         scopes = [
@@ -28,8 +28,12 @@ def get_worksheet():
         gc = gspread.authorize(credentials)
         spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
         sh = gc.open_by_key(spreadsheet_id)
-        return sh.worksheet("Hoja 1")
-    except:
+        worksheet = sh.worksheet("Hoja 1")
+        st.success("✅ Conexión a Google Sheets OK")
+        return worksheet
+    except Exception as e:
+        st.error(f"❌ Error al conectar a Google Sheets: {str(e)}")
+        st.info("Revisa: permisos del service account, nombre de la hoja y spreadsheet ID")
         return None
 
 def cargar_proyectos():
@@ -63,29 +67,40 @@ def cargar_proyectos():
     return []
 
 def guardar_crm(df):
-    """Intenta guardar en Google Sheets de forma robusta. Muestra error exacto si falla."""
+    """Versión de diagnóstico muy detallada"""
     worksheet = get_worksheet()
 
-    if worksheet is not None:
+    if worksheet is None:
+        st.error("❌ No se pudo conectar a Google Sheets (worksheet = None)")
+        # fallback local
         try:
-            # Método 1: Agregar solo la nueva fila (más rápido)
-            ultima_fila = df.iloc[-1].fillna("").tolist()
-            worksheet.append_row(ultima_fila, value_input_option="RAW")
-            st.toast("✅ Guardado correctamente en Google Sheets (nueva fila)", icon="✅")
-            return
-        except Exception as e1:
-            st.error(f"❌ Error al agregar fila: {str(e1)}")
+            base = os.path.dirname(os.path.abspath(__file__))
+            ruta = os.path.join(base, "proyectos.json")
+            df.to_json(ruta, orient="records", force_ascii=False, indent=2)
+            st.toast("💾 Guardado en archivo local (proyectos.json)", icon="📁")
+        except Exception as e:
+            st.error(f"❌ Error al guardar local: {e}")
+        return
 
-        try:
-            # Método 2: Reemplazar toda la hoja (más seguro si falla el método 1)
-            worksheet.clear()
-            worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
-            st.toast("✅ Guardado correctamente en Google Sheets (reemplazo completo)", icon="✅")
-            return
-        except Exception as e2:
-            st.error(f"❌ Error al reemplazar hoja: {str(e2)}")
+    # Intentar escribir en Google Sheets
+    try:
+        ultima_fila = df.iloc[-1].fillna("").tolist()
+        worksheet.append_row(ultima_fila, value_input_option="RAW")
+        st.toast("✅ ¡Nueva fila creada correctamente en Google Sheets!", icon="✅")
+        return
+    except Exception as e:
+        st.error(f"❌ Error al agregar fila en Google Sheets: {str(e)}")
 
-    # Si todo falla en Google Sheets → respaldo local
+    # Si falla, intentar método alternativo
+    try:
+        worksheet.clear()
+        worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+        st.toast("✅ Guardado en Google Sheets (reemplazo completo)", icon="✅")
+        return
+    except Exception as e2:
+        st.error(f"❌ Error al reemplazar toda la hoja: {str(e2)}")
+
+    # Fallback final
     try:
         base = os.path.dirname(os.path.abspath(__file__))
         ruta = os.path.join(base, "proyectos.json")
