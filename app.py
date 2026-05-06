@@ -382,9 +382,6 @@ def pg_dashboard():
     contacto_frio = len(df[df["estado"] == "lead"])
     por_contactar = len(df[df["estado"].isin(["cotizado", "negociacion", "aprobado"])])
 
-    df["totalNum"] = pd.to_numeric(df["totalNum"], errors='coerce').fillna(0)
-    pipeline_total = int(df["totalNum"].sum())
-
     # Header
     st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 100%);
       border-radius:14px;padding:28px 32px;margin-bottom:24px;color:white'>
@@ -401,10 +398,6 @@ def pg_dashboard():
     c3.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{cotizados}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Cotizados</div></div>', unsafe_allow_html=True)
     c4.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{contacto_frio}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Contacto Frío</div></div>', unsafe_allow_html=True)
     c5.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{por_contactar}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Por Contactar</div></div>', unsafe_allow_html=True)
-
-    # Pipeline (solo total, sin promedio)
-    st.markdown("### 💰 Pipeline")
-    st.markdown(f'<div class="kpi"><div class="kpi-label">Valor Total Pipeline</div><div class="kpi-val g">${pipeline_total/1_000_000:.1f}M</div><div class="kpi-sub">{total_edificios} edificios</div></div>', unsafe_allow_html=True)
 
     # Gráficas
     col_g1, col_g2 = st.columns(2)
