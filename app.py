@@ -1094,32 +1094,69 @@ def pg_configuracion():
         c3.metric("Usuarios",sum(1 for u in usuarios.values() if u.get("activo",True)))
         c4.metric("IA Gemini","🟢 Activa" if ai_ok else "🔴 Inactiva")
 
+import calendar  # Asegúrate de que esté importado al inicio del archivo
+
 def pg_calendario():
     hdr("📅", "Calendario Comercial", "Agenda y actividades importantes")
 
     es_g = st.session_state.user["rol"] == "gerente"
+    hoy = datetime.now()
+    mes_actual = hoy.month
+    año_actual = hoy.year
 
-    # ====================== URGENTES ESTA SEMANA (Mayor visibilidad) ======================
+    # ====================== URGENTES ESTA SEMANA ======================
     st.markdown("### 🔥 Urgentes esta semana")
     col_urg = st.columns(3)
-
     urgentes = [
         ("Nomad 53", "Reunión David Conde — llevar contrato", "Mié 7 Mayo", "14:00", "#FEF3C7", "#92400E"),
-        ("Bosque San Vicente", "Asamblea de copropietarios — única con financiamiento", "Vie 9 Mayo", "18:00", "#FEF3C7", "#92400E"),
+        ("Bosque San Vicente", "Asamblea — única con financiamiento", "Vie 9 Mayo", "18:00", "#FEF3C7", "#92400E"),
         ("Tiara", "Presentación en asamblea", "Mar 13 Mayo", "19:00", "#F0FDF9", "#065F46"),
-        ("El Cerro", "Reunión consejo — 7pm", "Mié 14 Mayo", "19:00", "#EFF6FF", "#1E3A8A"),
-        ("Risaralda", "Decisión final — llamar hoy", "Hoy", "Urgente", "#FEE2E2", "#B91C1C"),
     ]
-
     for i, (edif, desc, fecha, hora, bg, color) in enumerate(urgentes):
         with col_urg[i % 3]:
             st.markdown(f"""
-            <div style="background:{bg}; border-left:5px solid {color}; padding:16px; border-radius:12px; margin-bottom:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08)">
-                <div style="font-weight:700; font-size:15px; color:#04111E;">{edif}</div>
-                <div style="font-size:13px; margin:6px 0; color:#444;">{desc}</div>
-                <div style="font-size:12px; color:{color}; font-weight:700;">{fecha} • {hora}</div>
+            <div style="background:{bg}; border-left:5px solid {color}; padding:16px; border-radius:12px; margin-bottom:12px;">
+                <div style="font-weight:700; color:#04111E;">{edif}</div>
+                <div style="font-size:13px; margin:6px 0;">{desc}</div>
+                <div style="color:{color}; font-weight:700;">{fecha} • {hora}</div>
             </div>
             """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ====================== CALENDARIO REAL DEL MES ======================
+    st.markdown(f"### 📆 Calendario de {calendar.month_name[mes_actual]} {año_actual}")
+
+    # Generar calendario
+    cal = calendar.monthcalendar(año_actual, mes_actual)
+    dias_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+
+    # Cabecera de días
+    cols = st.columns(7)
+    for i, dia in enumerate(dias_semana):
+        cols[i].markdown(f"**{dia}**", unsafe_allow_html=True)
+
+    # Días del mes
+    for semana in cal:
+        cols = st.columns(7)
+        for i, dia in enumerate(semana):
+            if dia == 0:
+                cols[i].markdown("")  # Día vacío
+            else:
+                fecha_str = f"{dia:02d}"
+                # Marcar día actual
+                if dia == hoy.day and mes_actual == hoy.month and año_actual == hoy.year:
+                    cols[i].markdown(f"""
+                    <div style="background:#00C896; color:white; text-align:center; padding:8px; border-radius:8px; font-weight:700;">
+                        {fecha_str}
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    cols[i].markdown(f"""
+                    <div style="text-align:center; padding:8px; border:1px solid #E3EAF3; border-radius:8px;">
+                        {fecha_str}
+                    </div>
+                    """, unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -1131,7 +1168,7 @@ def pg_calendario():
             edif = st.text_input("Edificio *", placeholder="Ej: Nomad 53")
             titulo = st.text_input("Título / Asunto *", placeholder="Reunión con consejo")
         with c2:
-            fecha_a = st.date_input("Fecha", value=datetime.now() + timedelta(days=3))
+            fecha_a = st.date_input("Fecha", value=hoy + timedelta(days=3))
             hora_a = st.time_input("Hora", value=datetime.now().time().replace(minute=0))
         
         tipo = st.selectbox("Tipo de actividad", 
@@ -1143,36 +1180,16 @@ def pg_calendario():
         else:
             com_r = st.session_state.user["comercial"]
         
-        notas = st.text_area("Notas / Detalles", height=80, placeholder="Llevar propuesta actualizada, llevar contrato, etc.")
+        notas = st.text_area("Notas / Detalles", height=80)
 
         if st.form_submit_button("📅 Guardar Actividad", use_container_width=True):
             if edif and titulo:
-                st.success(f"✅ Actividad guardada: **{titulo}** en {edif} — {fecha_a.strftime('%d %b')} {hora_a.strftime('%H:%M')}")
+                st.success(f"✅ **{titulo}** guardada para {edif} — {fecha_a.strftime('%d %b %Y')} {hora_a.strftime('%H:%M')}")
                 st.balloons()
             else:
                 st.error("Edificio y título son obligatorios")
 
-    st.markdown("---")
 
-    # ====================== CALENDARIO DEL MES ======================
-    st.markdown("### 📆 Calendario del mes actual")
-    
-    # Mostrar un calendario simple pero visual
-    hoy = datetime.now()
-    mes_actual = hoy.strftime("%B %Y")
-    
-    st.markdown(f"**{mes_actual}**")
-    
-    # Aquí puedes mejorar más adelante con una librería como streamlit-calendar, pero por ahora mostramos una vista resumida
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.metric("Actividades esta semana", "7")
-    with c2:
-        st.metric("Reuniones pendientes", "4")
-    with c3:
-        st.metric("Entregas próximas", "2")
-
-    st.info("🔄 Próximamente: Calendario interactivo completo (puedes pedirlo cuando quieras)")
     
 def pg_auditoria():
     hdr("🔍","Auditoría Comercial","Análisis del equipo y pipeline completo")
