@@ -63,26 +63,27 @@ def cargar_proyectos():
     return []
 
 def guardar_crm(df):
-    """Guarda primero en Google Sheets. Si falla, guarda en proyectos.json (persistencia real)"""
-    # Intentar Google Sheets primero
+    """Guarda en Google Sheets. Si falla, guarda en proyectos.json y muestra el error exacto"""
     worksheet = get_worksheet()
+    
     if worksheet is not None:
         try:
-            worksheet.clear()
-            worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
-            st.toast("💾 Guardado correctamente en Google Sheets", icon="✅")
+            # Opción más segura: agregar solo la nueva fila en lugar de borrar todo
+            worksheet.append_row(df.iloc[-1].fillna("").tolist(), value_input_option="RAW")
+            st.toast("💾 Guardado correctamente en Google Sheets (nueva fila)", icon="✅")
             return
-        except:
-            pass
+        except Exception as e:
+            st.error(f"❌ Error al escribir en Google Sheets: {str(e)}")
+            st.warning("Se guardó en el archivo local como respaldo")
 
-    # Si Google Sheets falla → guardar en archivo local (persistencia)
+    # Fallback al archivo local
     try:
         base = os.path.dirname(os.path.abspath(__file__))
         ruta = os.path.join(base, "proyectos.json")
         df.to_json(ruta, orient="records", force_ascii=False, indent=2)
         st.toast("💾 Guardado en archivo local (proyectos.json) como respaldo", icon="📁")
     except Exception as e:
-        st.error(f"❌ No se pudo guardar: {e}")
+        st.error(f"❌ No se pudo guardar en ningún lado: {e}")
 
 # ══════════════════════════════════════════
 # USUARIOS PERSISTENTES (JSON)
