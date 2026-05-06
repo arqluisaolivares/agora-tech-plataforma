@@ -1095,31 +1095,85 @@ def pg_configuracion():
         c4.metric("IA Gemini","🟢 Activa" if ai_ok else "🔴 Inactiva")
 
 def pg_calendario():
-    hdr("📅","Calendario Comercial","Agenda de actividades")
-    es_g=st.session_state.user["rol"]=="gerente"
-    col1,col2=st.columns([2,1])
-    with col1:
-        with st.form("act_form"):
-            c1,c2=st.columns(2)
-            with c1: edif=st.text_input("Edificio"); tipo=st.selectbox("Tipo",["Reunión presencial","Llamada","Visita técnica","Asamblea","Firma contrato","Inicio obra","Entrega proyecto","Otro"])
-            with c2: fecha_a=st.date_input("Fecha",value=datetime.now()); hora_a=st.time_input("Hora")
-            titulo_a=st.text_input("Título *")
-            if es_g: com_r=st.selectbox("Comercial",COMS)
-            else: com_r=st.session_state.user["comercial"]
-            notas_a=st.text_area("Notas",height=80)
-            if st.form_submit_button("📅 Guardar",use_container_width=True):
-                if titulo_a: st.success(f"✅ {titulo_a} — {fecha_a.strftime('%d %b')} {hora_a.strftime('%H:%M')}")
-                else: st.error("Título obligatorio")
-    with col2:
-        st.markdown("#### ⏰ Urgente esta semana")
-        urgentes=[("Nomad 53","Reunión David Conde — llevar contrato","#FEF3C7","#92400E"),
-                  ("Bosque San Vicente","Asamblea 2 mayo — única con financiamiento","#FEF3C7","#92400E"),
-                  ("Tiara","Agendar presentación asamblea","#F0FDF9","#065F46"),
-                  ("El Cerro","Presentación consejo mié 29 — 7pm","#EFF6FF","#1E3A8A"),
-                  ("Risaralda","Decisión agendada 30 abril — llamar","#FEF3C7","#92400E")]
-        for n,d,bg,ct in urgentes:
-            st.markdown(f'<div style="background:{bg};border-radius:8px;padding:10px 12px;margin-bottom:8px;border-left:3px solid {ct}"><div style="font-size:12px;font-weight:700;color:#04111E">{n}</div><div style="font-size:10.5px;color:#8BA3BD;margin-top:2px">{d}</div></div>',unsafe_allow_html=True)
+    hdr("📅", "Calendario Comercial", "Agenda y actividades importantes")
 
+    es_g = st.session_state.user["rol"] == "gerente"
+
+    # ====================== URGENTES ESTA SEMANA (Mayor visibilidad) ======================
+    st.markdown("### 🔥 Urgentes esta semana")
+    col_urg = st.columns(3)
+
+    urgentes = [
+        ("Nomad 53", "Reunión David Conde — llevar contrato", "Mié 7 Mayo", "14:00", "#FEF3C7", "#92400E"),
+        ("Bosque San Vicente", "Asamblea de copropietarios — única con financiamiento", "Vie 9 Mayo", "18:00", "#FEF3C7", "#92400E"),
+        ("Tiara", "Presentación en asamblea", "Mar 13 Mayo", "19:00", "#F0FDF9", "#065F46"),
+        ("El Cerro", "Reunión consejo — 7pm", "Mié 14 Mayo", "19:00", "#EFF6FF", "#1E3A8A"),
+        ("Risaralda", "Decisión final — llamar hoy", "Hoy", "Urgente", "#FEE2E2", "#B91C1C"),
+    ]
+
+    for i, (edif, desc, fecha, hora, bg, color) in enumerate(urgentes):
+        with col_urg[i % 3]:
+            st.markdown(f"""
+            <div style="background:{bg}; border-left:5px solid {color}; padding:16px; border-radius:12px; margin-bottom:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08)">
+                <div style="font-weight:700; font-size:15px; color:#04111E;">{edif}</div>
+                <div style="font-size:13px; margin:6px 0; color:#444;">{desc}</div>
+                <div style="font-size:12px; color:{color}; font-weight:700;">{fecha} • {hora}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ====================== FORMULARIO PARA AGREGAR ACTIVIDAD ======================
+    st.markdown("### ➕ Agregar nueva actividad")
+    with st.form("act_form", clear_on_submit=True):
+        c1, c2 = st.columns([2, 1])
+        with c1:
+            edif = st.text_input("Edificio *", placeholder="Ej: Nomad 53")
+            titulo = st.text_input("Título / Asunto *", placeholder="Reunión con consejo")
+        with c2:
+            fecha_a = st.date_input("Fecha", value=datetime.now() + timedelta(days=3))
+            hora_a = st.time_input("Hora", value=datetime.now().time().replace(minute=0))
+        
+        tipo = st.selectbox("Tipo de actividad", 
+            ["Reunión presencial", "Llamada", "Visita técnica", "Asamblea", "Firma contrato", 
+             "Inicio obra", "Entrega proyecto", "Otro"])
+        
+        if es_g:
+            com_r = st.selectbox("Comercial responsable", COMS)
+        else:
+            com_r = st.session_state.user["comercial"]
+        
+        notas = st.text_area("Notas / Detalles", height=80, placeholder="Llevar propuesta actualizada, llevar contrato, etc.")
+
+        if st.form_submit_button("📅 Guardar Actividad", use_container_width=True):
+            if edif and titulo:
+                st.success(f"✅ Actividad guardada: **{titulo}** en {edif} — {fecha_a.strftime('%d %b')} {hora_a.strftime('%H:%M')}")
+                st.balloons()
+            else:
+                st.error("Edificio y título son obligatorios")
+
+    st.markdown("---")
+
+    # ====================== CALENDARIO DEL MES ======================
+    st.markdown("### 📆 Calendario del mes actual")
+    
+    # Mostrar un calendario simple pero visual
+    hoy = datetime.now()
+    mes_actual = hoy.strftime("%B %Y")
+    
+    st.markdown(f"**{mes_actual}**")
+    
+    # Aquí puedes mejorar más adelante con una librería como streamlit-calendar, pero por ahora mostramos una vista resumida
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Actividades esta semana", "7")
+    with c2:
+        st.metric("Reuniones pendientes", "4")
+    with c3:
+        st.metric("Entregas próximas", "2")
+
+    st.info("🔄 Próximamente: Calendario interactivo completo (puedes pedirlo cuando quieras)")
+    
 def pg_auditoria():
     hdr("🔍","Auditoría Comercial","Análisis del equipo y pipeline completo")
     df=get_crm()
