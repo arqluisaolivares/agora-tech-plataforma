@@ -375,17 +375,17 @@ def pg_dashboard():
     es_g = u["rol"] == "gerente"
     df = mis_proyectos()
 
-    # Cálculos corregidos y seguros
+    # === Cálculos seguros ===
     total_edificios = len(df)
     activos = len(df[~df["estado"].isin(["perdido", "cerrado"])])
     cotizados = len(df[df["estado"] == "cotizado"])
     contacto_frio = len(df[df["estado"] == "lead"])
     por_contactar = len(df[df["estado"].isin(["cotizado", "negociacion", "aprobado"])])
 
-    # Cálculo seguro del pipeline
+    # Conversión segura de valores numéricos
     df["totalNum"] = pd.to_numeric(df["totalNum"], errors='coerce').fillna(0)
     pipeline_total = int(df["totalNum"].sum())
-    promedio_edificio = round(df["totalNum"].mean() / 1_000_000, 1) if len(df) > 0 else 0
+    promedio = round(df["totalNum"].mean() / 1_000_000, 1) if len(df) > 0 else 0
 
     # Header
     st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 100%);
@@ -404,29 +404,23 @@ def pg_dashboard():
     c4.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{contacto_frio}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Contacto Frío</div></div>', unsafe_allow_html=True)
     c5.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{por_contactar}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Por Contactar</div></div>', unsafe_allow_html=True)
 
-    # Pipeline - Mejorado
-    st.markdown("### 💰 Pipeline General")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f'<div class="kpi"><div class="kpi-label">Valor Total Pipeline</div><div class="kpi-val g">${pipeline_total/1_000_000:.1f}M</div><div class="kpi-sub">{total_edificios} edificios</div></div>', unsafe_allow_html=True)
-    with col2:
-        st.markdown(f'<div class="kpi"><div class="kpi-label">Promedio por Edificio</div><div class="kpi-val g">${promedio_edificio:.1f}M</div></div>', unsafe_allow_html=True)
+    # Pipeline - Solo Promedio (quitamos Valor Total Pipeline)
+    st.markdown("### 💰 Pipeline")
+    st.markdown(f'<div class="kpi"><div class="kpi-label">Promedio por Edificio</div><div class="kpi-val g">${promedio:.1f}M</div><div class="kpi-sub">{total_edificios} edificios · ${pipeline_total/1_000_000:.1f}M totales</div></div>', unsafe_allow_html=True)
 
     # Gráficas
-    st.markdown("<br>", unsafe_allow_html=True)
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        # Proyectos por Etapa
         grupos = {"Comercial":["lead","cotizado","negociacion","aprobado","perdido"],
                   "Ejecución":["creacion_contrato","financiacion","obra","novedades_obra","entrega"],
                   "Posventa":["mantenimiento","cerrado"]}
         est_data = [{"Grupo":g, "Cantidad":len(df[df["estado"].isin(e)])} for g,e in grupos.items()]
-        fig = px.bar(pd.DataFrame(est_data), x="Grupo", y="Cantidad", title="Proyectos por Etapa", 
-                     color="Grupo", color_discrete_map={"Comercial":"#1A9FCC","Ejecución":"#00C896","Posventa":"#8B5CF6"})
+        fig = px.bar(pd.DataFrame(est_data), x="Grupo", y="Cantidad", 
+                     title="Proyectos por Etapa", color="Grupo",
+                     color_discrete_map={"Comercial":"#1A9FCC","Ejecución":"#00C896","Posventa":"#8B5CF6"})
         st.plotly_chart(fig, use_container_width=True)
 
     with col_g2:
-        # Cotizaciones por Comercial
         cot_por_com = df[df["estado"] == "cotizado"].groupby("comercial").size().reset_index(name="Cantidad")
         cot_por_com = cot_por_com.sort_values("Cantidad", ascending=False)
         fig2 = px.bar(cot_por_com, x="Cantidad", y="comercial", orientation="h",
@@ -434,7 +428,25 @@ def pg_dashboard():
                       color="Cantidad", color_continuous_scale=["#00C896","#1A9FCC"])
         st.plotly_chart(fig2, use_container_width=True)
 
-    # Top 5 urgentes (mantengo lo que ya tenías)
+    # === ALERTAS POR COMERCIAL (más completo) ===
+    st.markdown("### 🚨 Alertas por Comercial")
+    if es_g:
+        coms = df["comercial"].unique()
+        for com in coms:
+            proyectos_com = df[df["comercial"] == com]
+            alertas = proyectos_com[proyectos_com["estado"].isin(["cotizado", "negociacion", "aprobado"])]
+            
+            with st.expander(f"**{com}** — {len(proyectos_com)} proyectos", expanded=True):
+                if len(alertas) > 0:
+                    for _, r in alertas.head(3).iterrows():
+                        st.markdown(f'<div class="al-y">⚡ <strong>{r["nombre"]}</strong> — {ETAPAS.get(r["estado"],{}).get("label","")}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="al-g">✅ Sin alertas pendientes</div>', unsafe_allow_html=True)
+    else:
+        # Vista para comercial normal
+        st.markdown('<div class="al-y">⚡ Revisa tus proyectos en "Proyectos" o "Actualizar Estado"</div>', unsafe_allow_html=True)
+
+    # Top 5 urgentes
     st.markdown("### 🔥 Proyectos que necesitan atención inmediata")
     urgentes = df[df["estado"].isin(["cotizado", "negociacion", "aprobado"])].copy()
     if not urgentes.empty:
@@ -446,7 +458,7 @@ def pg_dashboard():
                 <span style="color:#E84040">• {ETAPAS.get(r['estado'],{}).get('label','')}</span>
             </div>""", unsafe_allow_html=True)
     else:
-        st.success("✅ No hay proyectos urgentes en este momento.")
+        st.success("✅ No hay proyectos urgentes")
 
 # ══════════════════════════════════════════
 # LOGIN
