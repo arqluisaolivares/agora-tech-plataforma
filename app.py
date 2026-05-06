@@ -779,44 +779,78 @@ def pg_edificios():
 
 def pg_correos():
     hdr("✉️","Correos IA","Genera correos comerciales personalizados")
-    df=mis_proyectos()
+
+    df = mis_proyectos()
     if not ai_activa():
-        st.markdown('<div class="al-r">⚠️ <b>IA no configurada.</b> Ve a ⚙️ Configuración.</div>',unsafe_allow_html=True)
-    col1,col2=st.columns(2)
+        st.markdown('<div class="al-r">⚠️ <b>IA no configurada.</b> Ve a ⚙️ Configuración.</div>', unsafe_allow_html=True)
+
+    col1, col2 = st.columns(2)
     with col1:
-        edif_sel=st.selectbox("Edificio",["— Seleccionar —"]+sorted(df["nombre"].dropna().unique().tolist()))
-        tipo_c=st.selectbox("Tipo de correo",["Primera presentación de propuesta","Seguimiento 5-7 días post-envío","Urgencia — oferta próxima a vencer","Respuesta a objeción: precio alto","Argumentos para asamblea de propietarios","Adultos mayores / discapacidad — respuesta específica","Propuesta de visita presencial","Confirmación de contrato y próximos pasos"])
-        ctx_e=st.text_area("Contexto adicional",height=90,placeholder="Ej: El cliente pregunta por adultos mayores...")
-        if st.button("🤖 Generar correo",use_container_width=True):
-            if edif_sel=="— Seleccionar —": st.warning("Selecciona un edificio")
-            elif not ai_activa(): st.error("Activa la IA en ⚙️ Configuración")
+        edif_sel = st.selectbox("Edificio", ["— Seleccionar —"] + sorted(df["nombre"].dropna().unique().tolist()))
+        tipo_c = st.selectbox("Tipo de correo", [
+            "Primera presentación de propuesta",
+            "Seguimiento 5-7 días post-envío",
+            "Urgencia — oferta próxima a vencer",
+            "Respuesta a objeción: precio alto",
+            "Argumentos para asamblea de propietarios",
+            "Adultos mayores / discapacidad — respuesta específica",
+            "Propuesta de visita presencial",
+            "Confirmación de contrato y próximos pasos"
+        ])
+        ctx_e = st.text_area("Contexto adicional", height=90, placeholder="Ej: El cliente pregunta por adultos mayores...")
+
+        if st.button("🤖 Generar correo", use_container_width=True):
+            if edif_sel == "— Seleccionar —":
+                st.warning("Selecciona un edificio")
+            elif not ai_activa():
+                st.error("Activa la IA en ⚙️ Configuración")
             else:
-                r=df[df["nombre"]==edif_sel].iloc[0]; tn=int(r.get("totalNum") or 0)
-                prompt=f"""Redacta correo "{tipo_c}" para Ágora Tech Colombia.
-EDIFICIO: {edif_sel} | Total: {fc(tn)} | Cuota 24m: {fc(int(r.get("c24Num") or 0))} | Cuota 36m: {fc(int(r.get("c36Num") or 0))}
-Contacto: {r.get("contacto","Administrador")} | Comercial: {r.get("comercial","")}
-Estado actual: {ETAPAS.get(str(r.get("estado","lead")),{"label":"Lead"})["label"]}
-{f"Contexto: {ctx_e}" if ctx_e else ""}
-Primera línea: ASUNTO: [asunto específico y llamativo]
-Énfasis: financiamiento 100% sin entrada sin intereses. Para adultos mayores: teclado PIN físico con relieve, no requiere smartphone.
-Firma: {st.session_state.user["nombre"]} — Ágora Tech | (+57) 315 101 7511 | agoratech.com.co
-Texto plano sin markdown."""
-                with st.spinner("Generando..."): correo=ask_ai(prompt)
-                st.session_state.correo=correo
+                r = df[df["nombre"] == edif_sel].iloc[0]
+                tn = int(r.get("totalNum") or 0)
+
+                # PROMPT MUY FUERTE Y CLARO
+                prompt = f"""Eres un asistente comercial experto de Ágora Tech Colombia.
+Empresa especializada en **automatización de accesos** con sistema SALTO HomeLok.
+Ofrecemos instalación de cerraduras electrónicas, control de acceso y financiamiento 100% sin intereses ni entrada.
+NO vendemos apartamentos ni inmuebles. Nunca hables de comprar unidades, descuentos en precio de apartamento ni nada relacionado con venta de bienes raíces.
+
+Datos del edificio:
+- Nombre: {edif_sel}
+- Valor cotizado: {fc(tn)}
+- Cuota 24 meses: {fc(int(r.get("c24Num") or 0))}
+- Cuota 36 meses: {fc(int(r.get("c36Num") or 0))}
+- Contacto: {r.get("contacto", "Administrador")}
+- Comercial: {r.get("comercial", "")}
+- Estado actual: {ETAPAS.get(str(r.get("estado","lead")), {"label":"Lead"})["label"]}
+
+Tipo de correo solicitado: {tipo_c}
+Contexto adicional del cliente: {ctx_e if ctx_e else "Ninguno"}
+
+Redacta un correo profesional, claro y persuasivo en español colombiano.
+Énfasis en: seguridad, comodidad para adultos mayores (teclado PIN físico con relieve, sin necesidad de celular), financiamiento 100% sin intereses.
+Firma siempre: 
+Luisa Olivares — Ágora Tech | (+57) 315 101 7511 | agoratech.com.co
+
+Responde SOLO el texto del correo (incluyendo asunto). Nada más."""
+                
+                with st.spinner("Generando correo..."):
+                    correo = ask_ai(prompt)
+                st.session_state.correo = correo
+
     with col2:
-        st.markdown("**Vista previa:**")
-        correo_actual=st.session_state.get("correo","")
+        st.markdown("**Vista previa del correo:**")
+        correo_actual = st.session_state.get("correo", "")
         if correo_actual:
             st.markdown(f"""<div style='background:#F6F9FC;border:1.5px solid #E3EAF3;border-radius:10px;
                  padding:20px;font-family:monospace;font-size:12.5px;line-height:1.7;
-                 white-space:pre-wrap;color:#04111E;max-height:460px;overflow-y:auto'>{correo_actual.replace("<","&lt;").replace(">","&gt;")}</div>""",unsafe_allow_html=True)
-            st.download_button("📋 Descargar correo",data=correo_actual,
-                file_name=f"correo_{edif_sel[:20] if edif_sel!='— Seleccionar —' else 'agora'}.txt",mime="text/plain")
+                 white-space:pre-wrap;color:#04111E;max-height:460px;overflow-y:auto'>{correo_actual.replace("<","&lt;").replace(">","&gt;")}</div>""", unsafe_allow_html=True)
+            st.download_button("📋 Descargar correo", data=correo_actual,
+                file_name=f"correo_{edif_sel[:20] if edif_sel != '— Seleccionar —' else 'agora'}.txt", mime="text/plain")
         else:
             st.markdown("""<div style='background:#F6F9FC;border:1.5px dashed #C8D8E9;border-radius:10px;
                  padding:40px;text-align:center;color:#8BA3BD;font-size:13px'>
               Selecciona edificio y haz clic en<br><b>"🤖 Generar correo"</b>
-            </div>""",unsafe_allow_html=True)
+            </div>""", unsafe_allow_html=True)
 
 def pg_asistente():
     hdr("🤖","Asistente Comercial IA","Consultas estratégicas — pipeline, cierres, objeciones")
