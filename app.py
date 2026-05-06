@@ -85,6 +85,32 @@ def guardar_crm(df):
         st.error(f"❌ No se pudo guardar: {e}")
 
 # ══════════════════════════════════════════
+# USUARIOS PERSISTENTES (JSON)
+# ══════════════════════════════════════════
+def cargar_usuarios():
+    """Carga usuarios desde JSON o usa los default"""
+    base = os.path.dirname(os.path.abspath(__file__))
+    ruta = os.path.join(base, "usuarios.json")
+    if os.path.exists(ruta):
+        try:
+            with open(ruta, encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    # Si no existe, devuelve los default
+    return dict(USUARIOS_DEFAULT)
+
+def guardar_usuarios():
+    """Guarda los usuarios en JSON"""
+    try:
+        base = os.path.dirname(os.path.abspath(__file__))
+        ruta = os.path.join(base, "usuarios.json")
+        with open(ruta, "w", encoding="utf-8") as f:
+            json.dump(st.session_state.usuarios_db, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Error al guardar usuarios: {e}")
+
+# ══════════════════════════════════════════
 # USUARIOS
 # ══════════════════════════════════════════
 USUARIOS_DEFAULT = {
@@ -98,7 +124,7 @@ USUARIOS_DEFAULT = {
 }
 def get_usuarios():
     if "usuarios_db" not in st.session_state:
-        st.session_state.usuarios_db = dict(USUARIOS_DEFAULT)
+        st.session_state.usuarios_db = cargar_usuarios()
     return st.session_state.usuarios_db
 
 # ══════════════════════════════════════════
@@ -1086,7 +1112,7 @@ def pg_usuarios():
 
     usuarios = get_usuarios()
 
-    # Tabla con contraseñas visibles (para que puedas verlas)
+    # Tabla con contraseñas visibles
     st.markdown("### Usuarios registrados")
     data = []
     for ukey, ud in usuarios.items():
@@ -1095,16 +1121,14 @@ def pg_usuarios():
             "Nombre": ud["nombre"],
             "Rol": ud["rol"].capitalize(),
             "Comercial": ud["comercial"],
-            "Contraseña": ud.get("pass", "—"),          # ← Contraseña visible
+            "Contraseña": ud.get("pass", "—"),
             "Estado": "✅ Activo" if ud.get("activo", True) else "🔴 Inactivo"
         })
     st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
 
     st.markdown("---")
 
-    # ========================
-    # CAMBIAR CONTRASEÑA (rápido y confiable)
-    # ========================
+    # Cambiar contraseña
     st.markdown("### 🔑 Cambiar contraseña de un usuario")
     col1, col2 = st.columns([1, 2])
     with col1:
@@ -1119,18 +1143,16 @@ def pg_usuarios():
     if st.button("💾 Cambiar contraseña", type="primary", use_container_width=True):
         if nueva_contrasena.strip():
             st.session_state.usuarios_db[usuario_seleccionado]["pass"] = nueva_contrasena.strip()
+            guardar_usuarios()   # ← Guarda permanentemente
             nombre = usuarios[usuario_seleccionado]["nombre"]
-            st.success(f"✅ Contraseña de **{nombre}** actualizada correctamente.\n"
-                       f"El cambio es inmediato: ahora {nombre} debe usar la nueva contraseña.")
+            st.success(f"✅ Contraseña de **{nombre}** actualizada correctamente.\nEl cambio es inmediato.")
             st.rerun()
         else:
             st.error("Por favor ingresa una nueva contraseña")
 
     st.markdown("---")
 
-    # ========================
-    # Crear nuevo usuario (comercial completamente libre)
-    # ========================
+    # Crear nuevo usuario
     st.markdown("### ➕ Crear nuevo usuario")
     with st.form("add_user_form"):
         c1, c2 = st.columns(2)
@@ -1140,7 +1162,7 @@ def pg_usuarios():
             nu_pass = st.text_input("Contraseña *", type="password")
         with c2:
             nu_rol = st.selectbox("Rol", ["comercial", "gerente"])
-            nu_com = st.text_input("Nombre del Comercial *", placeholder="Ej: Carlos Mendoza - Nuevo comercial")
+            nu_com = st.text_input("Nombre del Comercial *", placeholder="Ej: Carlos Mendoza")
         if st.form_submit_button("Crear usuario", use_container_width=True):
             if not nu_user or not nu_nombre or not nu_pass or not nu_com:
                 st.error("Todos los campos son obligatorios")
@@ -1154,9 +1176,10 @@ def pg_usuarios():
                     "comercial": nu_com.upper(),
                     "activo": True
                 }
-                st.success(f"✅ Usuario **{nu_user}** creado correctamente como comercial **{nu_com}**")
+                guardar_usuarios()   # ← Guarda permanentemente
+                st.success(f"✅ Usuario **{nu_user}** creado correctamente")
                 st.rerun()
-
+                
 # ══════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════
