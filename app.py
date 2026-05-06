@@ -778,30 +778,103 @@ def pg_nueva_cotizacion():
                 st.balloons()
 
 def pg_edificios():
-    hdr("🏢","Edificios","Vista por proyecto con historial y encuesta")
-    df=mis_proyectos(); buscar=st.text_input("🔍 Buscar",placeholder="Nombre...")
-    if buscar: df=df[df["nombre"].str.contains(buscar,case=False,na=False)]
-    cols=st.columns(3)
-    for i,(_,r) in enumerate(df.iterrows()):
-        with cols[i%3]:
-            tn=int(r.get("totalNum") or 0); total=fc(tn) if tn else "Sin cotización"
-            c36=fc(int(r.get("c36Num") or 0)) if tn else "—"; est=str(r.get("estado","lead"))
-            drive=str(r.get("drive","") or "")
-            hist_raw=str(r.get("historial","") or "[]")
-            try: hist=json.loads(hist_raw); n_hist=len(hist)
-            except: n_hist=0
-            enc_raw=str(r.get("encuesta","") or "{}")
-            try: enc=json.loads(enc_raw); tiene_enc=bool(enc)
-            except: tiene_enc=False
-            drv=f'<a href="{drive}" target="_blank" style="background:#E8F0FE;color:#1A73E8;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;text-decoration:none">📁 Drive</a>' if drive.startswith("http") else ""
-            st.markdown(f"""<div style='background:white;border:1px solid #E3EAF3;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 1px 6px rgba(4,17,30,.05)'>
-              <div style='font-family:Sora,sans-serif;font-size:13px;font-weight:700;color:#04111E;margin-bottom:4px'>{str(r["nombre"])[:30]}</div>
-              <div style='font-size:11px;color:#8BA3BD;margin-bottom:8px'>{str(r.get("comercial","—"))}</div>
-              <div style='font-family:Sora,sans-serif;font-size:17px;font-weight:800;color:#05875D;margin-bottom:2px'>{total}</div>
-              {'<div style="font-size:10.5px;color:#8BA3BD;margin-bottom:8px">Cuota 36m: '+c36+'/mes</div>' if tn else '<div style="margin-bottom:8px"></div>'}
-              <div style="margin-bottom:6px">{badge(est)}</div>
-              <div style="font-size:10px;color:#8BA3BD">{n_hist} entradas en historial · {"📊 Encuesta ✓" if tiene_enc else "Sin encuesta"} {drv}</div>
-            </div>""",unsafe_allow_html=True)
+    hdr("🏢", "Edificios", "Detalle completo de cada proyecto")
+
+    df = mis_proyectos()
+    if df.empty:
+        st.info("No hay edificios registrados aún.")
+        return
+
+    # Buscador
+    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+
+    dff = df.copy()
+    if buscar:
+        dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False)]
+
+    st.markdown(f"**{len(dff)} edificios encontrados**")
+
+    # Mostrar tarjetas clickeables
+    for _, r in dff.iterrows():
+        nombre = r["nombre"]
+        comercial = r.get("comercial", "—")
+        estado = str(r.get("estado", "lead"))
+        valor = fc(int(r.get("totalNum", 0)))
+        ultima = str(r.get("lastNote", "Sin notas"))[:120]
+
+        with st.expander(f"🏢 **{nombre}** — {badge(estado)} — {valor} — {comercial}", expanded=False):
+            
+            tab1, tab2, tab3, tab4 = st.tabs(["📋 Información", "📜 Historial Completo", "💰 Oferta", "🤖 Sugerencia IA"])
+
+            with tab1:
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Valor Total", valor)
+                c2.metric("Estado Actual", ETAPAS.get(estado, {}).get("label", estado))
+                c3.metric("Comercial", comercial)
+
+                st.markdown("**Contacto:**")
+                st.write(r.get("contacto", "—"))
+                if r.get("email"):
+                    st.write(f"📧 {r.get('email')}")
+                if r.get("drive"):
+                    st.markdown(f"[📁 Ver carpeta en Drive]({r.get('drive')})")
+
+            with tab2:
+                hist_raw = str(r.get("historial", "[]"))
+                try:
+                    hist = json.loads(hist_raw)
+                except:
+                    hist = []
+
+                if hist:
+                    for h in reversed(hist):
+                        st.markdown(f"""
+                        <div class="hist-item">
+                            <div class="hist-date">{h.get('fecha')} • {h.get('usuario')}</div>
+                            <strong>{ETAPAS.get(h.get('estado'),{}).get('label', h.get('estado'))}</strong><br>
+                            {h.get('nota')}
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Aún no hay historial registrado.")
+
+            with tab3:
+                st.markdown("**Cotización Actual**")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Valor Total", valor)
+                c2.metric("Cuota 24 meses", fc(int(r.get("c24Num", 0))))
+                c3.metric("Cuota 36 meses", fc(int(r.get("c36Num", 0))))
+
+                if r.get("version"):
+                    st.caption(f"Versión: {r.get('version')}")
+
+            with tab4:
+                if ai_activa():
+                    with st.spinner("Generando sugerencia contextual..."):
+                        prompt = f"""Edificio: {nombre}
+Estado actual: {ETAPAS.get(estado,{}).get('label', estado)}
+Valor: {valor}
+Última nota: {ultima}
+
+Eres un gerente comercial experimentado. Dame una sugerencia concreta y accionable (máximo 4-5 líneas) de qué debería hacer el comercial con este edificio ahora."""
+                        sugerencia = ask_ai(prompt)
+                    st.markdown(sugerencia)
+                else:
+                    st.warning("Activa la IA en Configuración para ver sugerencias inteligentes.")
+
+            # Botones rápidos
+            col_btn1, col_btn2, col_btn3 = st.columns(3)
+            if col_btn1.button("📝 Actualizar Estado", key=f"upd_{r.name}"):
+                st.session_state.editing = nombre
+                st.session_state.page = "Actualizar Estado"
+                st.rerun()
+            if col_btn2.button("✉️ Generar Correo", key=f"mail_{r.name}"):
+                st.session_state.page = "Correos IA"
+                st.rerun()
+            if col_btn3.button("📊 Encuesta", key=f"enc_{r.name}"):
+                st.session_state.editing = nombre
+                st.session_state.page = "Encuesta Prospecto"
+                st.rerun()
 
 def pg_correos():
     hdr("✉️","Correos IA","Genera correos comerciales personalizados")
