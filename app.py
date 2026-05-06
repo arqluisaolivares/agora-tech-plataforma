@@ -17,12 +17,9 @@ from google.oauth2.service_account import Credentials
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """Versión corregida para el nuevo secreto service_account_json"""
+    """Versión estable con formato estándar de secrets"""
     try:
-        # ←←← ESTA ES LA LÍNEA NUEVA
-        json_str = st.secrets["service_account_json"]
-        creds_info = json.loads(json_str)
-
+        creds_info = st.secrets["gcp_service_account"]
         scopes = [
             "https://spreadsheets.google.com/feeds",
             "https://www.googleapis.com/auth/drive"
@@ -36,7 +33,7 @@ def get_worksheet():
         return worksheet
     except Exception as e:
         st.error(f"❌ Error al conectar a Google Sheets: {str(e)}")
-        st.info("Revisa que el secreto se llame exactamente 'service_account_json'")
+        st.info("Revisa que el secreto se llame exactamente 'gcp_service_account'")
         return None
 
 def cargar_proyectos():
