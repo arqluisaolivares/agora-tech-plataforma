@@ -1100,7 +1100,7 @@ def pg_usuarios():
     st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
 
     # ========================
-    # CAMBIAR CONTRASEÑA (fácil y rápido)
+    # CAMBIAR CONTRASEÑA (rápido y claro)
     # ========================
     st.markdown("### 🔑 Cambiar contraseña de un usuario")
     col1, col2 = st.columns([1, 2])
@@ -1126,7 +1126,7 @@ def pg_usuarios():
     st.markdown("---")
 
     # ========================
-    # Crear nuevo usuario
+    # Crear nuevo usuario (con Comercial libre)
     # ========================
     st.markdown("### ➕ Crear nuevo usuario")
     with st.form("add_user_form"):
@@ -1137,9 +1137,9 @@ def pg_usuarios():
             nu_pass = st.text_input("Contraseña *", type="password")
         with c2:
             nu_rol = st.selectbox("Rol", ["comercial", "gerente"])
-            nu_com = st.selectbox("Comercial", COMS)
+            nu_com = st.text_input("Nombre del Comercial *", placeholder="Ej: Carlos Mendoza")   # ← Ahora es texto libre
         if st.form_submit_button("Crear usuario", use_container_width=True):
-            if not nu_user or not nu_nombre or not nu_pass:
+            if not nu_user or not nu_nombre or not nu_pass or not nu_com:
                 st.error("Todos los campos son obligatorios")
             elif nu_user.lower() in usuarios:
                 st.error(f"El usuario '{nu_user}' ya existe")
@@ -1148,10 +1148,10 @@ def pg_usuarios():
                     "pass": nu_pass,
                     "nombre": nu_nombre,
                     "rol": nu_rol,
-                    "comercial": nu_com,
+                    "comercial": nu_com.upper(),      # se guarda en mayúsculas
                     "activo": True
                 }
-                st.success(f"✅ Usuario **{nu_user}** creado correctamente")
+                st.success(f"✅ Usuario **{nu_user}** creado correctamente como comercial **{nu_com}**")
                 st.rerun()
 
 # ══════════════════════════════════════════
