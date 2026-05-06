@@ -677,6 +677,7 @@ def pg_actualizar():
 
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
+
     with st.form("form_cot"):
         st.markdown("**Datos del edificio**")
         c1,c2=st.columns(2)
@@ -687,30 +688,67 @@ def pg_nueva_cotizacion():
         with c2:
             direccion=st.text_input("Dirección")
             drive_url=st.text_input("Link carpeta Drive (opcional)")
+
         st.markdown("---")
         st.markdown("**Cotización**")
-        c1,c2,c3=st.columns(3)
-        with c1: valor=st.number_input("Valor total ($)",min_value=0,value=0,step=1_000_000,format="%d")
-        with c2: vig_v=st.number_input("Vigilancia actual ($/mes)",min_value=0,value=0,step=100_000,format="%d")
-        with c3: vig_h=st.text_input("Vigilancia vigente hasta",placeholder="Nov 2026")
-        c1,c2=st.columns(2)
-        with c1: estado=st.selectbox("Estado inicial",ESTADOS_LISTA,format_func=lambda x:ETAPAS.get(x,{"label":x})["label"])
-        with c2: version=st.text_input("Versión",value="v1")
+        c1,c2,c3,c4=st.columns(4)
+        with c1:
+            valor=st.number_input("Valor total ($)",min_value=0,value=0,step=1_000_000,format="%d")
+        with c2:
+            cuota24=st.number_input("Cuota 24 meses ($)",min_value=0,value=0,step=10_000,format="%d")
+        with c3:
+            cuota36=st.number_input("Cuota 36 meses ($)",min_value=0,value=0,step=10_000,format="%d")
+        with c4:
+            version=st.text_input("Versión",value="v1")
+
         notas=st.text_area("Observaciones iniciales",placeholder="Contexto, cómo llegó el lead, próximos pasos...")
+
         if st.form_submit_button("💾 Guardar en CRM",use_container_width=True):
-            if not nombre: st.error("El nombre del edificio es obligatorio")
+            if not nombre:
+                st.error("El nombre del edificio es obligatorio")
             else:
-                u=st.session_state.user; c24n=valor//24 if valor else 0; c36n=valor//36 if valor else 0
+                u=st.session_state.user
+                
+                # Guardamos los valores numéricos
+                c24n = cuota24
+                c36n = cuota36
+                
                 nuevo_id=int(datetime.now().timestamp())
-                hist_inicial=json.dumps([{"fecha":datetime.now().strftime("%d %b %Y %H:%M"),"estado":estado,"nota":notas or "Proyecto creado","usuario":u["nombre"]}],ensure_ascii=False)
-                add_proy({"id":nuevo_id,"nombre":nombre.upper(),"comercial":u["comercial"],
-                    "contacto":contacto,"email":email,"total":fc(valor),"totalNum":valor,
-                    "cuota24":fc(c24n),"cuota36":fc(c36n),"c24Num":c24n,"c36Num":c36n,
-                    "vig":str(vig_v),"vigH":vig_h,"estado":estado,"etapaOrig":estado,"version":version,
-                    "notas":notas,"lastUpdate":datetime.now().isoformat(),"lastNote":notas[:100],
-                    "fecha":datetime.now().strftime("%d %b %Y"),"drive":drive_url,
-                    "historial":hist_inicial,"encuesta":"","contrato":"","financiacion_info":"","obra_inicio":"","obra_fin":""})
-                st.success(f"✅ **{nombre}** guardado — {fc(valor)}")
+                hist_inicial=json.dumps([{
+                    "fecha":datetime.now().strftime("%d %b %Y %H:%M"),
+                    "estado":"cotizado",
+                    "nota":notas or "Cotización entregada",
+                    "usuario":u["nombre"]
+                }],ensure_ascii=False)
+
+                add_proy({
+                    "id":nuevo_id,
+                    "nombre":nombre.upper(),
+                    "comercial":u["comercial"],
+                    "contacto":contacto,
+                    "email":email,
+                    "total":fc(valor),
+                    "totalNum":valor,
+                    "cuota24":fc(c24n),
+                    "cuota36":fc(c36n),
+                    "c24Num":c24n,
+                    "c36Num":c36n,
+                    "estado":"cotizado",          # ← Oferta ya entregada
+                    "etapaOrig":"cotizado",
+                    "version":version,
+                    "notas":notas,
+                    "lastUpdate":datetime.now().isoformat(),
+                    "lastNote":notas[:100] if notas else "Cotización entregada",
+                    "fecha":datetime.now().strftime("%d %b %Y"),
+                    "drive":drive_url,
+                    "historial":hist_inicial,
+                    "encuesta":"",
+                    "contrato":"",
+                    "financiacion_info":"",
+                    "obra_inicio":"",
+                    "obra_fin":""
+                })
+                st.success(f"✅ **{nombre}** guardado como **cotizado** — ${valor/1e6:.1f}M")
                 st.balloons()
 
 def pg_edificios():
