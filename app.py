@@ -17,9 +17,12 @@ from google.oauth2.service_account import Credentials
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """Versión de diagnóstico - muestra exactamente qué falla"""
+    """Versión corregida para el nuevo secreto service_account_json"""
     try:
-        creds_info = st.secrets["gcp_service_account"]
+        # ←←← ESTA ES LA LÍNEA NUEVA
+        json_str = st.secrets["service_account_json"]
+        creds_info = json.loads(json_str)
+
         scopes = [
             "https://spreadsheets.google.com/feeds",
             "https://www.googleapis.com/auth/drive"
@@ -29,11 +32,11 @@ def get_worksheet():
         spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
         sh = gc.open_by_key(spreadsheet_id)
         worksheet = sh.worksheet("Hoja 1")
-        st.success("✅ Conexión a Google Sheets OK")
+        st.success("✅ Conexión a Google Sheets exitosa")
         return worksheet
     except Exception as e:
         st.error(f"❌ Error al conectar a Google Sheets: {str(e)}")
-        st.info("Revisa: permisos del service account, nombre de la hoja y spreadsheet ID")
+        st.info("Revisa que el secreto se llame exactamente 'service_account_json'")
         return None
 
 def cargar_proyectos():
