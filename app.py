@@ -17,23 +17,22 @@ from google.oauth2.service_account import Credentials
 # ══════════════════════════════════════════
 @st.cache_resource
 def get_worksheet():
-    """Versión estable con formato estándar de secrets"""
+    """VERSIÓN DE DIAGNÓSTICO - muestra exactamente qué secretos tiene Streamlit"""
     try:
+        # Esto nos dirá qué secretos están realmente cargados
+        st.error("🔍 DEBUG: Secretos disponibles en esta app:")
+        st.write(list(st.secrets.keys()))
+        
         creds_info = st.secrets["gcp_service_account"]
-        scopes = [
-            "https://spreadsheets.google.com/feeds",
-            "https://www.googleapis.com/auth/drive"
-        ]
+        scopes = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         credentials = Credentials.from_service_account_info(creds_info, scopes=scopes)
         gc = gspread.authorize(credentials)
-        spreadsheet_id = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
-        sh = gc.open_by_key(spreadsheet_id)
+        sh = gc.open_by_key("1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE")
         worksheet = sh.worksheet("Hoja 1")
         st.success("✅ Conexión a Google Sheets exitosa")
         return worksheet
     except Exception as e:
-        st.error(f"❌ Error al conectar a Google Sheets: {str(e)}")
-        st.info("Revisa que el secreto se llame exactamente 'gcp_service_account'")
+        st.error(f"❌ Error real: {str(e)}")
         return None
 
 def cargar_proyectos():
