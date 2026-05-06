@@ -63,22 +63,29 @@ def cargar_proyectos():
     return []
 
 def guardar_crm(df):
-    """Intenta guardar en Google Sheets. Si falla, muestra el error exacto y guarda en JSON"""
+    """Intenta guardar en Google Sheets de forma robusta. Muestra error exacto si falla."""
     worksheet = get_worksheet()
 
     if worksheet is not None:
         try:
-            # Tomamos solo la última fila (la cotización nueva)
+            # Método 1: Agregar solo la nueva fila (más rápido)
             ultima_fila = df.iloc[-1].fillna("").tolist()
             worksheet.append_row(ultima_fila, value_input_option="RAW")
             st.toast("✅ Guardado correctamente en Google Sheets (nueva fila)", icon="✅")
             return
-        except Exception as e:
-            error_msg = str(e)
-            st.error(f"❌ Error al guardar en Google Sheets: {error_msg}")
-            st.warning("Se guardó en el archivo local como respaldo")
+        except Exception as e1:
+            st.error(f"❌ Error al agregar fila: {str(e1)}")
 
-    # Fallback al archivo local
+        try:
+            # Método 2: Reemplazar toda la hoja (más seguro si falla el método 1)
+            worksheet.clear()
+            worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+            st.toast("✅ Guardado correctamente en Google Sheets (reemplazo completo)", icon="✅")
+            return
+        except Exception as e2:
+            st.error(f"❌ Error al reemplazar hoja: {str(e2)}")
+
+    # Si todo falla en Google Sheets → respaldo local
     try:
         base = os.path.dirname(os.path.abspath(__file__))
         ruta = os.path.join(base, "proyectos.json")
