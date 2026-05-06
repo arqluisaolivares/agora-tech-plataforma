@@ -1096,42 +1096,33 @@ def pg_configuracion():
 
 import calendar  # Asegúrate de que esté importado al inicio del archivo
 
+import calendar
+from datetime import datetime, timedelta
+
 def pg_calendario():
-    hdr("📅", "Calendario Comercial", "Agenda y actividades importantes")
+    hdr("📅", "Calendario Comercial", "Agenda mensual con actividades visibles")
 
-    es_g = st.session_state.user["rol"] == "gerente"
     hoy = datetime.now()
-    mes_actual = hoy.month
-    año_actual = hoy.year
+    mes = hoy.month
+    año = hoy.year
 
-    # ====================== URGENTES ESTA SEMANA ======================
-    st.markdown("### 🔥 Urgentes esta semana")
-    col_urg = st.columns(3)
-    urgentes = [
-        ("Nomad 53", "Reunión David Conde — llevar contrato", "Mié 7 Mayo", "14:00", "#FEF3C7", "#92400E"),
-        ("Bosque San Vicente", "Asamblea — única con financiamiento", "Vie 9 Mayo", "18:00", "#FEF3C7", "#92400E"),
-        ("Tiara", "Presentación en asamblea", "Mar 13 Mayo", "19:00", "#F0FDF9", "#065F46"),
-    ]
-    for i, (edif, desc, fecha, hora, bg, color) in enumerate(urgentes):
-        with col_urg[i % 3]:
-            st.markdown(f"""
-            <div style="background:{bg}; border-left:5px solid {color}; padding:16px; border-radius:12px; margin-bottom:12px;">
-                <div style="font-weight:700; color:#04111E;">{edif}</div>
-                <div style="font-size:13px; margin:6px 0;">{desc}</div>
-                <div style="color:{color}; font-weight:700;">{fecha} • {hora}</div>
-            </div>
-            """, unsafe_allow_html=True)
+    # ==================== ACTIVIDADES DE EJEMPLO (puedes agregar más) ====================
+    actividades = {
+        "2026-05-07": ["14:00 - Reunión Nomad 53 con David Conde", "Llevar contrato"],
+        "2026-05-09": ["18:00 - Asamblea Bosque San Vicente"],
+        "2026-05-13": ["19:00 - Presentación Tiara"],
+        "2026-05-14": ["19:00 - Consejo El Cerro"],
+        "2026-05-16": ["11:00 - Visita técnica Risaralda"],
+        "2026-05-20": ["15:00 - Firma contrato Altos del Pino"],
+    }
 
-    st.markdown("---")
+    # ====================== CALENDARIO REAL CON ACTIVIDADES ======================
+    st.markdown(f"### 📆 {calendar.month_name[mes]} {año}")
 
-    # ====================== CALENDARIO REAL DEL MES ======================
-    st.markdown(f"### 📆 Calendario de {calendar.month_name[mes_actual]} {año_actual}")
+    cal = calendar.monthcalendar(año, mes)
+    dias_semana = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
 
-    # Generar calendario
-    cal = calendar.monthcalendar(año_actual, mes_actual)
-    dias_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-
-    # Cabecera de días
+    # Cabecera
     cols = st.columns(7)
     for i, dia in enumerate(dias_semana):
         cols[i].markdown(f"**{dia}**", unsafe_allow_html=True)
@@ -1141,51 +1132,70 @@ def pg_calendario():
         cols = st.columns(7)
         for i, dia in enumerate(semana):
             if dia == 0:
-                cols[i].markdown("")  # Día vacío
-            else:
-                fecha_str = f"{dia:02d}"
-                # Marcar día actual
-                if dia == hoy.day and mes_actual == hoy.month and año_actual == hoy.year:
-                    cols[i].markdown(f"""
-                    <div style="background:#00C896; color:white; text-align:center; padding:8px; border-radius:8px; font-weight:700;">
-                        {fecha_str}
-                    </div>
-                    """, unsafe_allow_html=True)
+                cols[i].markdown("")
+                continue
+
+            fecha_str = f"{año}-{mes:02d}-{dia:02d}"
+            es_hoy = (dia == hoy.day and mes == hoy.month and año == hoy.year)
+
+            # Contenido de la celda
+            with cols[i].container():
+                # Número del día
+                if es_hoy:
+                    st.markdown(f"<div style='text-align:center; background:#00C896; color:white; font-weight:700; padding:4px; border-radius:8px;'>{dia}</div>", unsafe_allow_html=True)
                 else:
-                    cols[i].markdown(f"""
-                    <div style="text-align:center; padding:8px; border:1px solid #E3EAF3; border-radius:8px;">
-                        {fecha_str}
-                    </div>
-                    """, unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align:center; font-weight:600; color:#04111E;'>{dia}</div>", unsafe_allow_html=True)
+
+                # Actividades del día
+                if fecha_str in actividades:
+                    for act in actividades[fecha_str]:
+                        st.markdown(f"""
+                        <div style="background:#FFF3E0; padding:6px 8px; margin:4px 0; border-radius:6px; font-size:12px; border-left:3px solid #FF9800;">
+                            {act}
+                        </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='color:#B0B0B0; font-size:11px; text-align:center; margin-top:8px;'>—</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ====================== FORMULARIO PARA AGREGAR ACTIVIDAD ======================
-    st.markdown("### ➕ Agregar nueva actividad")
+    # ====================== URGENTES ESTA SEMANA ======================
+    st.markdown("### 🔥 Urgentes esta semana")
+    col_urg = st.columns(3)
+    urg = [
+        ("Nomad 53", "Reunión con David Conde - Llevar contrato", "Mié 7 Mayo 14:00"),
+        ("Bosque San Vicente", "Asamblea de copropietarios", "Vie 9 Mayo 18:00"),
+        ("Tiara", "Presentación en asamblea", "Mar 13 Mayo 19:00"),
+    ]
+    for i, (edif, desc, fecha) in enumerate(urg):
+        with col_urg[i]:
+            st.markdown(f"""
+            <div style="background:#FEF2F2; padding:14px; border-radius:10px; border-left:5px solid #E84040;">
+                <strong>{edif}</strong><br>
+                <small>{desc}</small><br>
+                <strong style="color:#E84040;">{fecha}</strong>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ====================== AGREGAR NUEVA ACTIVIDAD ======================
+    st.markdown("### ➕ Agregar nueva actividad al calendario")
     with st.form("act_form", clear_on_submit=True):
-        c1, c2 = st.columns([2, 1])
+        c1, c2 = st.columns([2,1])
         with c1:
-            edif = st.text_input("Edificio *", placeholder="Ej: Nomad 53")
-            titulo = st.text_input("Título / Asunto *", placeholder="Reunión con consejo")
+            edif = st.text_input("Edificio *")
+            titulo = st.text_input("Título de la actividad *")
         with c2:
             fecha_a = st.date_input("Fecha", value=hoy + timedelta(days=3))
             hora_a = st.time_input("Hora", value=datetime.now().time().replace(minute=0))
         
-        tipo = st.selectbox("Tipo de actividad", 
-            ["Reunión presencial", "Llamada", "Visita técnica", "Asamblea", "Firma contrato", 
-             "Inicio obra", "Entrega proyecto", "Otro"])
-        
-        if es_g:
-            com_r = st.selectbox("Comercial responsable", COMS)
-        else:
-            com_r = st.session_state.user["comercial"]
-        
-        notas = st.text_area("Notas / Detalles", height=80)
+        tipo = st.selectbox("Tipo", ["Reunión presencial", "Llamada", "Visita técnica", "Asamblea", "Firma contrato", "Otro"])
+        notas = st.text_area("Notas adicionales", height=70)
 
-        if st.form_submit_button("📅 Guardar Actividad", use_container_width=True):
+        if st.form_submit_button("📅 Guardar en Calendario", use_container_width=True):
             if edif and titulo:
-                st.success(f"✅ **{titulo}** guardada para {edif} — {fecha_a.strftime('%d %b %Y')} {hora_a.strftime('%H:%M')}")
-                st.balloons()
+                st.success(f"✅ Actividad guardada: **{titulo}** en {edif} — {fecha_a.strftime('%d %b %Y')} {hora_a.strftime('%H:%M')}")
             else:
                 st.error("Edificio y título son obligatorios")
 
