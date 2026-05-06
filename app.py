@@ -375,20 +375,15 @@ def pg_dashboard():
     es_g = u["rol"] == "gerente"
     df = mis_proyectos()
 
-    # === Cálculos seguros y corregidos ===
+    # Cálculos
     total_edificios = len(df)
     activos = len(df[~df["estado"].isin(["perdido", "cerrado"])])
     cotizados = len(df[df["estado"] == "cotizado"])
     contacto_frio = len(df[df["estado"] == "lead"])
     por_contactar = len(df[df["estado"].isin(["cotizado", "negociacion", "aprobado"])])
 
-    # Conversión numérica segura
     df["totalNum"] = pd.to_numeric(df["totalNum"], errors='coerce').fillna(0)
-
-    # === PROMEDIO SOLO CON EDIFICIOS QUE TIENEN VALOR ===
-    df_con_valor = df[df["totalNum"] > 0]
     pipeline_total = int(df["totalNum"].sum())
-    promedio = round(df_con_valor["totalNum"].mean() / 1_000_000, 1) if len(df_con_valor) > 0 else 0
 
     # Header
     st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 100%);
@@ -407,11 +402,9 @@ def pg_dashboard():
     c4.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{contacto_frio}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Contacto Frío</div></div>', unsafe_allow_html=True)
     c5.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{por_contactar}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Por Contactar</div></div>', unsafe_allow_html=True)
 
-    # Pipeline - Solo Promedio (como pediste)
+    # Pipeline (solo total, sin promedio)
     st.markdown("### 💰 Pipeline")
-    col1, col2 = st.columns([3, 2])
-    with col1:
-        st.markdown(f'<div class="kpi"><div class="kpi-label">Promedio por Edificio (solo con valor)</div><div class="kpi-val g">${promedio:.1f}M</div><div class="kpi-sub">{len(df_con_valor)} edificios con cotización · Total pipeline ${pipeline_total/1_000_000:.1f}M</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="kpi"><div class="kpi-label">Valor Total Pipeline</div><div class="kpi-val g">${pipeline_total/1_000_000:.1f}M</div><div class="kpi-sub">{total_edificios} edificios</div></div>', unsafe_allow_html=True)
 
     # Gráficas
     col_g1, col_g2 = st.columns(2)
@@ -432,18 +425,20 @@ def pg_dashboard():
                       color="Cantidad", color_continuous_scale=["#00C896","#1A9FCC"])
         st.plotly_chart(fig2, use_container_width=True)
 
-    # Alertas por Comercial (más completas)
+    # Alertas por Comercial
     st.markdown("### 🚨 Alertas por Comercial")
     if es_g:
         for com in sorted(df["comercial"].unique()):
             proy_com = df[df["comercial"] == com]
             alertas = proy_com[proy_com["estado"].isin(["cotizado", "negociacion", "aprobado"])]
-            with st.expander(f"**{com}** — {len(proy_com)} proyectos", expanded=False):
+            with st.expander(f"**{com}** — {len(proy_com)} proyectos", expanded=True):
                 if len(alertas) > 0:
                     for _, r in alertas.head(3).iterrows():
                         st.markdown(f'<div class="al-y">⚡ <strong>{r["nombre"]}</strong> — {ETAPAS.get(r["estado"],{}).get("label","")}</div>', unsafe_allow_html=True)
                 else:
                     st.markdown('<div class="al-g">✅ Sin alertas pendientes</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="al-y">⚡ Revisa tus proyectos pendientes</div>', unsafe_allow_html=True)
 
     # Top 5 urgentes
     st.markdown("### 🔥 Proyectos que necesitan atención inmediata")
@@ -458,7 +453,7 @@ def pg_dashboard():
             </div>""", unsafe_allow_html=True)
     else:
         st.success("✅ No hay proyectos urgentes en este momento.")
-
+        
 # ══════════════════════════════════════════
 # LOGIN
 # ══════════════════════════════════════════
