@@ -1086,7 +1086,7 @@ def pg_usuarios():
 
     usuarios = get_usuarios()
 
-    # Tabla clara de usuarios
+    # Tabla con contraseñas visibles (para que puedas verlas)
     st.markdown("### Usuarios registrados")
     data = []
     for ukey, ud in usuarios.items():
@@ -1095,12 +1095,15 @@ def pg_usuarios():
             "Nombre": ud["nombre"],
             "Rol": ud["rol"].capitalize(),
             "Comercial": ud["comercial"],
+            "Contraseña": ud.get("pass", "—"),          # ← Contraseña visible
             "Estado": "✅ Activo" if ud.get("activo", True) else "🔴 Inactivo"
         })
     st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
 
+    st.markdown("---")
+
     # ========================
-    # CAMBIAR CONTRASEÑA (rápido y claro)
+    # CAMBIAR CONTRASEÑA (rápido y confiable)
     # ========================
     st.markdown("### 🔑 Cambiar contraseña de un usuario")
     col1, col2 = st.columns([1, 2])
@@ -1118,7 +1121,7 @@ def pg_usuarios():
             st.session_state.usuarios_db[usuario_seleccionado]["pass"] = nueva_contrasena.strip()
             nombre = usuarios[usuario_seleccionado]["nombre"]
             st.success(f"✅ Contraseña de **{nombre}** actualizada correctamente.\n"
-                       f"El cambio es inmediato: {nombre} ya no podrá entrar con la contraseña anterior.")
+                       f"El cambio es inmediato: ahora {nombre} debe usar la nueva contraseña.")
             st.rerun()
         else:
             st.error("Por favor ingresa una nueva contraseña")
@@ -1126,7 +1129,7 @@ def pg_usuarios():
     st.markdown("---")
 
     # ========================
-    # Crear nuevo usuario (con Comercial libre)
+    # Crear nuevo usuario (comercial completamente libre)
     # ========================
     st.markdown("### ➕ Crear nuevo usuario")
     with st.form("add_user_form"):
@@ -1137,7 +1140,7 @@ def pg_usuarios():
             nu_pass = st.text_input("Contraseña *", type="password")
         with c2:
             nu_rol = st.selectbox("Rol", ["comercial", "gerente"])
-            nu_com = st.text_input("Nombre del Comercial *", placeholder="Ej: Carlos Mendoza")   # ← Ahora es texto libre
+            nu_com = st.text_input("Nombre del Comercial *", placeholder="Ej: Carlos Mendoza - Nuevo comercial")
         if st.form_submit_button("Crear usuario", use_container_width=True):
             if not nu_user or not nu_nombre or not nu_pass or not nu_com:
                 st.error("Todos los campos son obligatorios")
@@ -1148,7 +1151,7 @@ def pg_usuarios():
                     "pass": nu_pass,
                     "nombre": nu_nombre,
                     "rol": nu_rol,
-                    "comercial": nu_com.upper(),      # se guarda en mayúsculas
+                    "comercial": nu_com.upper(),
                     "activo": True
                 }
                 st.success(f"✅ Usuario **{nu_user}** creado correctamente como comercial **{nu_com}**")
