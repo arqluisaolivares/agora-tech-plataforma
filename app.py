@@ -303,14 +303,15 @@ def hdr(icon, title, sub=""):
 def pg_dashboard():
     u = st.session_state.user
     es_g = u["rol"] == "gerente"
-    df = mis_proyectos()   # Ya filtra por comercial automáticamente
+    df = mis_proyectos()
 
-    # Cálculos relevantes
-    total_activos = len(df)
-    en_negociacion = len(df[df["estado"].isin(["negociacion", "aprobado"])])
-    perdidos_mes = len(df[df["estado"] == "perdido"])   # Puedes mejorar esto con fecha después
+    # Cálculos
+    total_edificios = len(df)
+    activos = len(df) - len(df[df["estado"].isin(["perdido", "cerrado"])])
     cotizados = len(df[df["estado"] == "cotizado"])
-    en_obra = len(df[df["estado"] == "obra"])
+    contacto_frio = len(df[df["estado"] == "lead"])
+    por_contactar = len(df[df["estado"].isin(["cotizado", "negociacion"])])
+    pipeline_total = int(df["totalNum"].sum() or 0)
 
     # Header
     st.markdown(f"""<div style='background:linear-gradient(135deg,#04111E 0%,#0A2540 55%,#0E3D6B 100%);
@@ -320,63 +321,80 @@ def pg_dashboard():
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # RESUMEN GENERAL - Números grandes y relevantes
+    # RESUMEN GENERAL - Números muy grandes y en negrilla
     st.markdown("### Resumen General")
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("**Proyectos Activos**", total_activos)
-    c2.metric("**En Negociación**", en_negociacion, "cierre cercano")
-    c3.metric("**Cotizados**", cotizados)
-    c4.metric("**Perdidos este mes**", perdidos_mes)
-    c5.metric("**En Obra**", en_obra)
+    c1.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{total_edificios}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Total Edificios</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{activos}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Activos</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{cotizados}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Cotizados</div></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{contacto_frio}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Contacto Frío</div></div>', unsafe_allow_html=True)
+    c5.markdown(f'<div style="text-align:center"><div style="font-size:48px;font-weight:800;color:#04111E">{por_contactar}</div><div style="font-size:16px;font-weight:700;color:#8BA3BD">Por Contactar</div></div>', unsafe_allow_html=True)
+
+    # Pipeline
+    st.markdown("### 💰 Pipeline")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f'<div class="kpi"><div class="kpi-label">Valor Total Pipeline</div><div class="kpi-val g">${pipeline_total/1e9:.2f}B</div><div class="kpi-sub">{total_edificios} edificios</div></div>', unsafe_allow_html=True)
+    with col2:
+        promedio = int(df["totalNum"].mean() or 0) / 1e6
+        st.markdown(f'<div class="kpi"><div class="kpi-label">Promedio por Edificio</div><div class="kpi-val">${promedio:.1f}M</div></div>', unsafe_allow_html=True)
 
     # Gráficas
+    st.markdown("<br>", unsafe_allow_html=True)
     col_g1, col_g2 = st.columns(2)
     with col_g1:
-        # Proyectos por etapa
         grupos = {"Comercial":["lead","cotizado","negociacion","aprobado","perdido"],
-                  "Ejecución":["creacion_contrato","financiacion","obra","entrega"],
+                  "Ejecución":["creacion_contrato","financiacion","obra","novedades_obra","entrega"],
                   "Posventa":["mantenimiento","cerrado"]}
         est_data = [{"Grupo":g, "n":len(df[df["estado"].isin(e)])} for g,e in grupos.items()]
-        fig = px.bar(pd.DataFrame(est_data), x="Grupo", y="n", title="Proyectos por Etapa",
+        fig = px.bar(pd.DataFrame(est_data), x="Grupo", y="n", title="Proyectos por Etapa", 
                      color="Grupo", color_discrete_map={"Comercial":"#1A9FCC","Ejecución":"#00C896","Posventa":"#8B5CF6"})
+        fig.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=40,b=10))
         st.plotly_chart(fig, use_container_width=True)
 
     with col_g2:
-        # Rendimiento por comercial (solo si es gerente)
-        if es_g:
-            rend = df[df["totalNum"]>0].groupby("comercial")["totalNum"].agg(['count','sum']).reset_index()
-            rend.columns = ["Comercial", "Cotizaciones", "Valor"]
-            rend["ValorM"] = (rend["Valor"]/1e6).round(1)
-            fig2 = px.bar(rend.sort_values("ValorM", ascending=False), 
-                          x="ValorM", y="Comercial", orientation="h",
-                          title="Rendimiento por Comercial", color="ValorM",
-                          color_continuous_scale=["#00C896","#1A9FCC"])
-            st.plotly_chart(fig2, use_container_width=True)
+        cot_por_com = df[df["estado"] == "cotizado"].groupby("comercial").size().reset_index(name="Cantidad")
+        cot_por_com = cot_por_com.sort_values("Cantidad", ascending=False)
+        fig2 = px.bar(cot_por_com, x="Cantidad", y="comercial", orientation="h",
+                      title="Cotizaciones Entregadas por Comercial", 
+                      color="Cantidad", color_continuous_scale=["#00C896","#1A9FCC"])
+        fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=40,b=10))
+        st.plotly_chart(fig2, use_container_width=True)
 
-    # LISTA DE PROYECTOS QUE NECESITAN ATENCIÓN INMEDIATA (lado derecho)
-    st.markdown("### 🔥 Proyectos que necesitan atención inmediata (Top 5)")
+    # Top 5 proyectos que necesitan atención inmediata
+    st.markdown("### 🔥 Proyectos que necesitan atención inmediata")
     urgentes = df[df["estado"].isin(["cotizado", "negociacion", "aprobado"])].copy()
     if not urgentes.empty:
         urgentes = urgentes.sort_values("lastUpdate", ascending=True).head(5)
         for _, r in urgentes.iterrows():
             st.markdown(f"""
-            <div style="background:#FEF2F2;border-left:4px solid #E84040;padding:12px 16px;border-radius:8px;margin-bottom:8px">
-                <strong>{r['nombre']}</strong> — {r.get('comercial','')}  
+            <div style="background:#FEF2F2;border-left:5px solid #E84040;padding:14px 18px;border-radius:8px;margin-bottom:10px">
+                <strong>{r.get('nombre')}</strong> — {r.get('comercial','')} 
                 <span style="color:#E84040">• {ETAPAS.get(r['estado'],{}).get('label','')}</span>
             </div>""", unsafe_allow_html=True)
     else:
         st.success("✅ No hay proyectos urgentes en este momento.")
 
-    # Alertas personales por comercial
-    st.markdown("### 🚨 Tus Alertas")
-    if not es_g:
-        st.info("Aquí aparecerán alertas personalizadas para tus edificios (próximos seguimientos, asambleas, etc.)")
+    # Alertas por Comercial
+    st.markdown("### 🚨 Alertas por Comercial")
+    if es_g:
+        alertas = {
+            "Rafael Torres": ["Nomad 53 — reunión pendiente", "Edificio Altos del Pino — seguimiento", "Plazoleta 75 — llamada pendiente"],
+            "Sonia Castro": ["Bosque San Vicente — asamblea 2 mayo"],
+            "Lina Calle": ["Tiara — pasó primer filtro"],
+            "Alberto Ferrer": ["Sin alertas pendientes"],
+            "Santiago Bohórquez": ["Sin alertas pendientes"]
+        }
+        for comercial, lista in alertas.items():
+            with st.expander(f"**{comercial}**", expanded=True):
+                for alerta in lista[:3]:
+                    st.markdown(f'<div class="al-y">⚡ {alerta}</div>', unsafe_allow_html=True)
     else:
-        st.info("Como gerente ves alertas de todo el equipo.")
+        st.markdown('<div class="al-y">⚡ Revisa tus proyectos pendientes</div>', unsafe_allow_html=True)
 
     if not ai_activa():
         st.markdown('<div class="al-b">💡 IA sin configurar. Ve a ⚙️ Configuración.</div>', unsafe_allow_html=True)
-        
+
 # ══════════════════════════════════════════
 # LOGIN
 # ══════════════════════════════════════════
