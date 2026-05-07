@@ -817,7 +817,8 @@ def pg_edificios():
             nombre = r["nombre"]
             comercial = r.get("comercial", "—")
             valor = fc(int(r.get("totalNum", 0)))
-            estado_label = ETAPAS.get(str(r.get("estado", "lead")), {}).get("label", "—")
+            estado = str(r.get("estado", "lead"))
+            estado_label = ETAPAS.get(estado, {}).get("label", estado)
 
             # Tarjeta limpia y moderna
             if st.button(f"""
