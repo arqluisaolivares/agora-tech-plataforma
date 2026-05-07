@@ -778,7 +778,7 @@ def pg_nueva_cotizacion():
                 st.balloons()
 
 def pg_edificios():
-    hdr("🏢", "Edificios", "Selecciona un edificio para ver su detalle")
+    hdr("🏢", "Edificios", "Selecciona un edificio para ver detalle completo")
 
     df = mis_proyectos()
     if df.empty:
@@ -792,7 +792,7 @@ def pg_edificios():
     with col_f2:
         comercial_filter = st.selectbox("Comercial", ["Todos"] + sorted(df["comercial"].dropna().unique().tolist()))
     with col_f3:
-        estado_filter = st.selectbox("Estado", ["Todos"] + [ETAPAS[e]["label"] for e in ETAPAS.keys()])
+        estado_filter = st.selectbox("Estado", ["Todos"] + [ETAPAS[e]["label"] for e in ETAPAS])
 
     # Aplicar filtros
     dff = df.copy()
@@ -801,7 +801,7 @@ def pg_edificios():
     if comercial_filter != "Todos":
         dff = dff[dff["comercial"] == comercial_filter]
     if estado_filter != "Todos":
-        estado_key = [k for k,v in ETAPAS.items() if v["label"] == estado_filter][0] if estado_filter != "Todos" else None
+        estado_key = next((k for k,v in ETAPAS.items() if v["label"] == estado_filter), None)
         if estado_key:
             dff = dff[dff["estado"] == estado_key]
 
@@ -809,7 +809,7 @@ def pg_edificios():
 
     with col_list:
         st.markdown(f"**{len(dff)} proyectos**")
-
+        
         for _, r in dff.iterrows():
             nombre = r["nombre"]
             comercial = r.get("comercial", "—")
@@ -817,15 +817,15 @@ def pg_edificios():
             estado = str(r.get("estado", "lead"))
             estado_label = ETAPAS.get(estado, {}).get("label", estado)
 
-            # Tarjeta moderna con color sólido
+            # Tarjeta limpia y moderna
             if st.button(f"""
-                **{nombre.upper()}**  
+                **{nombre}**  
                 {comercial}  
                 {valor} • {estado_label}
             """, key=f"edif_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
-    # ====================== PANEL DETALLE ======================
+    # ====================== PANEL DETALLE (Derecha) ======================
     with col_detail:
         seleccionado = st.session_state.get("edificio_seleccionado")
 
@@ -872,7 +872,7 @@ def pg_edificios():
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        sug = ask_ai(f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta de próximo paso.")
+                        sug = ask_ai(f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta.")
                     st.markdown(sug)
                 else:
                     st.warning("Activa la IA en Configuración")
