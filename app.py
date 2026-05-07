@@ -792,31 +792,22 @@ def pg_edificios():
         dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False) | 
                   dff["comercial"].str.contains(buscar, case=False, na=False)]
 
-    # Layout moderno: Lista + Panel
-    col_list, col_detail = st.columns([1.9, 3.1])
+    col_list, col_detail = st.columns([2, 3])
 
     with col_list:
         st.markdown(f"**{len(dff)} proyectos**")
-
+        
         for _, r in dff.iterrows():
             nombre = r["nombre"]
-            estado = str(r.get("estado", "lead"))
+            estado_label = ETAPAS.get(str(r.get("estado", "lead")), {}).get("label", "—")
             valor = fc(int(r.get("totalNum", 0)))
             comercial = r.get("comercial", "—")
 
-            badge_html = badge(estado)
-
-            # Tarjeta moderna
-            if st.button(f"""
-                <div style="text-align:left; width:100%;">
-                    <div style="font-weight:700; font-size:15.5px;">{nombre}</div>
-                    <div style="font-size:13px; color:#64748B;">{comercial} • {valor}</div>
-                    <div style="margin-top:6px;">{badge_html}</div>
-                </div>
-            """, key=f"sel_{r.name}", use_container_width=True):
+            if st.button(f"{nombre}\n{comercial} • {valor} • {estado_label}", 
+                         key=f"sel_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
-    # ====================== PANEL DETALLE MODERNO ======================
+    # ====================== PANEL DETALLE ======================
     with col_detail:
         seleccionado = st.session_state.get("edificio_seleccionado")
 
@@ -824,15 +815,14 @@ def pg_edificios():
             r = df[df["nombre"] == seleccionado].iloc[0]
             estado = str(r.get("estado", "lead"))
 
-            # Cabecera moderna
             st.markdown(f"""
-            <div style="background:linear-gradient(90deg, #0F172A, #1E2937); color:white; padding:20px; border-radius:16px; margin-bottom:20px;">
+            <div style="background:#0F172A; color:white; padding:24px; border-radius:16px; margin-bottom:20px;">
                 <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:8px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+                <p style="margin:8px 0 0 0; opacity:0.85;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
             </div>
             """, unsafe_allow_html=True)
 
-            tab1, tab2, tab3 = st.tabs(["📋 Información General", "📜 Historial Completo", "🤖 Sugerencia IA"])
+            tab1, tab2, tab3 = st.tabs(["📋 Información", "📜 Historial", "🤖 Sugerencia IA"])
 
             with tab1:
                 c1, c2, c3 = st.columns(3)
@@ -840,8 +830,7 @@ def pg_edificios():
                 c2.metric("Cuota 24m", fc(int(r.get("c24Num", 0))))
                 c3.metric("Cuota 36m", fc(int(r.get("c36Num", 0))))
 
-                st.markdown("**Contacto**")
-                st.write(f"**Nombre:** {r.get('contacto','—')}")
+                st.write(f"**Contacto:** {r.get('contacto','—')}")
                 st.write(f"**Email:** {r.get('email','—')}")
                 if r.get("drive"):
                     st.markdown(f"[📁 Abrir Drive]({r.get('drive')})")
@@ -850,32 +839,26 @@ def pg_edificios():
                 hist_raw = str(r.get("historial", "[]"))
                 try: hist = json.loads(hist_raw)
                 except: hist = []
-                
                 if hist:
-                    for h in reversed(hist):
+                    for h in reversed(hist[-6:]):
                         st.markdown(f"""
-                        <div style="background:#F8FAFC; padding:14px; border-radius:12px; margin-bottom:10px; border-left:4px solid #00C896;">
-                            <small style="color:#64748B;">{h.get('fecha')} • {h.get('usuario')}</small><br>
+                        <div style="background:#F8FAFC; padding:14px; border-radius:12px; margin-bottom:10px;">
+                            <small>{h.get('fecha')} • {h.get('usuario')}</small><br>
                             <strong>{ETAPAS.get(h.get('estado'),{}).get('label', h.get('estado'))}</strong><br>
                             {h.get('nota')}
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.info("Sin historial aún.")
+                    st.info("Sin historial registrado.")
 
             with tab3:
                 if ai_activa():
-                    with st.spinner("Generando recomendación estratégica..."):
-                        prompt = f"""Edificio: {seleccionado}
-Estado: {ETAPAS.get(estado,{}).get('label')}
-Valor: {fc(int(r.get('totalNum',0)))}
-Última nota: {r.get('lastNote','')}
-
-Dame una sugerencia clara y accionable de próximo paso para este edificio."""
+                    with st.spinner("Generando sugerencia..."):
+                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nDame una sugerencia concreta de próximo paso."
                         sug = ask_ai(prompt)
                     st.markdown(sug)
                 else:
-                    st.warning("🔴 Activa la IA en Configuración")
+                    st.warning("Activa la IA para ver sugerencias")
 
             # Botones de acción
             c1, c2, c3 = st.columns(3)
@@ -886,18 +869,14 @@ Dame una sugerencia clara y accionable de próximo paso para este edificio."""
             if c2.button("✉️ Generar Correo", use_container_width=True):
                 st.session_state.page = "Correos IA"
                 st.rerun()
-            if c3.button("📊 Encuesta Prospecto", use_container_width=True):
+            if c3.button("📊 Encuesta", use_container_width=True):
                 st.session_state.editing = seleccionado
                 st.session_state.page = "Encuesta Prospecto"
                 st.rerun()
 
         else:
-            st.markdown("""
-            <div style="text-align:center; padding:60px 20px; color:#94A3B8;">
-                <h3>Selecciona un edificio de la lista</h3>
-                <p>Aparecerá aquí el detalle completo, historial y sugerencia IA</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.info("👈 Selecciona un edificio de la lista para ver su información completa.")
+
 
 
 def pg_correos():
