@@ -778,14 +778,13 @@ def pg_nueva_cotizacion():
                 st.balloons()
 
 def pg_edificios():
-    hdr("🏢", "Edificios", "Selecciona un edificio para ver detalle completo")
+    hdr("🏢", "Edificios", "Haz clic en un edificio para ver su detalle")
 
     df = mis_proyectos()
     if df.empty:
         st.info("No hay edificios registrados aún.")
         return
 
-    # Filtros
     buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
 
     dff = df.copy()
@@ -794,34 +793,21 @@ def pg_edificios():
 
     col_list, col_detail = st.columns([2, 3])
 
+    # ==================== LISTA SIMPLE (izquierda) ====================
     with col_list:
         st.markdown(f"**{len(dff)} proyectos**")
         
         for _, r in dff.iterrows():
             nombre = r["nombre"]
             comercial = r.get("comercial", "—")
-            estado = str(r.get("estado", "lead"))
             valor = fc(int(r.get("totalNum", 0)))
+            estado_label = ETAPAS.get(str(r.get("estado", "lead")), {}).get("label", "—")
 
-            # Colores según estado
-            if estado in ["perdido"]:
-                estado_color = "🔴"
-            elif estado in ["cotizado", "negociacion"]:
-                estado_color = "🟡"
-            else:
-                estado_color = "🟢"
-
-            estado_label = ETAPAS.get(estado, {}).get("label", estado)
-
-            # Tarjeta limpia y justificada a la izquierda
-            if st.button(f"""
-                **{nombre}**  
-                {comercial}  
-                {valor} {estado_color} {estado_label}
-            """, key=f"edif_{r.name}", use_container_width=True):
+            if st.button(f"{nombre}\n{comercial} • {valor} • {estado_label}", 
+                         key=f"edif_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
-    # ====================== PANEL DETALLE ======================
+    # ==================== PANEL DETALLE (derecha) ====================
     with col_detail:
         seleccionado = st.session_state.get("edificio_seleccionado")
 
@@ -829,12 +815,8 @@ def pg_edificios():
             r = df[df["nombre"] == seleccionado].iloc[0]
             estado = str(r.get("estado", "lead"))
 
-            st.markdown(f"""
-            <div style="background:#0F172A; color:white; padding:28px; border-radius:16px; margin-bottom:24px;">
-                <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')}</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"### {seleccionado}")
+            st.caption(f"{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}")
 
             tab1, tab2, tab3 = st.tabs(["📋 Información", "📜 Historial", "🤖 Sugerencia IA"])
 
@@ -853,24 +835,21 @@ def pg_edificios():
                 except: hist = []
                 if hist:
                     for h in reversed(hist[-8:]):
-                        st.markdown(f"""
-                        <div style="background:#F8FAFC; padding:16px; border-radius:12px; margin-bottom:12px;">
-                            <small>{h.get('fecha')} • {h.get('usuario')}</small><br>
-                            <strong>{ETAPAS.get(h.get('estado'),{}).get('label')}</strong><br>
-                            {h.get('nota')}
-                        </div>
-                        """, unsafe_allow_html=True)
+                        st.write(f"**{h.get('fecha')}** - {h.get('usuario')}")
+                        st.write(h.get('nota'))
+                        st.divider()
                 else:
                     st.info("Sin historial registrado.")
 
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        sug = ask_ai(f"Edificio: {seleccionado}\nSugerencia concreta.")
+                        sug = ask_ai(f"Edificio: {seleccionado}\nSugerencia concreta de próximo paso.")
                     st.markdown(sug)
                 else:
                     st.warning("Activa la IA en Configuración")
 
+            # Botones de acción
             c1, c2, c3 = st.columns(3)
             if c1.button("📝 Actualizar Estado", use_container_width=True, type="primary"):
                 st.session_state.editing = seleccionado
@@ -885,7 +864,7 @@ def pg_edificios():
                 st.rerun()
 
         else:
-            st.info("👈 Selecciona un edificio de la lista")
+            st.info("👈 Selecciona un edificio de la lista para ver su información detallada.")
             
 
 
