@@ -785,7 +785,8 @@ def pg_edificios():
         st.info("No hay edificios registrados aún.")
         return
 
-    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+    # Buscador
+    buscar = st.text_input("🔍 Buscar", placeholder="Nombre del edificio...")
 
     dff = df.copy()
     if buscar:
@@ -795,20 +796,33 @@ def pg_edificios():
 
     with col_list:
         st.markdown(f"**{len(dff)} proyectos**")
-        
-        for _, r in dff.iterrows():
-            nombre = r["nombre"]
-            comercial = r.get("comercial", "—")
-            valor = fc(int(r.get("totalNum", 0)))
-            estado_label = ETAPAS.get(str(r.get("estado", "lead")), {}).get("label", "—")
 
-            # Diseño simple como el inicial que te gustaba
+        for _, r in dff.iterrows():
+            tn = int(r.get("totalNum") or 0)
+            total = fc(tn) if tn else "$0"
+            c36 = fc(int(r.get("c36Num") or 0)) if tn else "—"
+            est = str(r.get("estado", "lead"))
+            drive = str(r.get("drive", "") or "")
+            hist_raw = str(r.get("historial", "") or "[]")
+            try: 
+                hist = json.loads(hist_raw)
+                n_hist = len(hist)
+            except: 
+                n_hist = 0
+            drv = f'<a href="{drive}" target="_blank" style="background:#E8F0FE;color:#1A73E8;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;text-decoration:none">📁 Drive</a>' if drive.startswith("http") else ""
+
+            # Tarjeta como la que tenías antes (bonita)
             if st.button(f"""
-                **{nombre}**
-                {comercial}
-                {valor} • {estado_label}
+                <div style='background:white;border:1px solid #E3EAF3;border-radius:12px;padding:16px;margin-bottom:8px;box-shadow:0 1px 6px rgba(4,17,30,.05)'>
+                  <div style='font-family:Sora,sans-serif;font-size:15px;font-weight:700;color:#04111E;margin-bottom:4px'>{str(r["nombre"])[:35]}</div>
+                  <div style='font-size:12px;color:#8BA3BD;margin-bottom:8px'>{str(r.get("comercial","—"))}</div>
+                  <div style='font-family:Sora,sans-serif;font-size:18px;font-weight:800;color:#05875D;margin-bottom:6px'>{total}</div>
+                  {'<div style="font-size:11px;color:#8BA3BD;margin-bottom:8px">Cuota 36m: '+c36+'/mes</div>' if tn else ''}
+                  <div style="margin-bottom:6px">{badge(est)}</div>
+                  <div style="font-size:11px;color:#8BA3BD">{n_hist} historial · {"📊 Encuesta" if r.get("encuesta") else "Sin encuesta"} {drv}</div>
+                </div>
             """, key=f"edif_{r.name}", use_container_width=True):
-                st.session_state.edificio_seleccionado = nombre
+                st.session_state.edificio_seleccionado = r["nombre"]
 
     # ====================== PANEL DETALLE A LA DERECHA ======================
     with col_detail:
@@ -819,9 +833,9 @@ def pg_edificios():
             estado = str(r.get("estado", "lead"))
 
             st.markdown(f"""
-            <div style="background:#0F172A; color:white; padding:24px; border-radius:16px; margin-bottom:20px;">
+            <div style="background:#0F172A; color:white; padding:28px; border-radius:16px; margin-bottom:20px;">
                 <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:8px 0 0 0;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -832,22 +846,32 @@ def pg_edificios():
                 c1.metric("Valor Total", fc(int(r.get("totalNum", 0))))
                 c2.metric("Cuota 24m", fc(int(r.get("c24Num", 0))))
                 c3.metric("Cuota 36m", fc(int(r.get("c36Num", 0))))
+
                 st.write(f"**Contacto:** {r.get('contacto','—')}")
+                if r.get("email"): st.write(f"**Email:** {r.get('email')}")
+                if r.get("drive"):
+                    st.markdown(f"[📁 Abrir Drive]({r.get('drive')})")
 
             with tab2:
                 hist_raw = str(r.get("historial", "[]"))
                 try: hist = json.loads(hist_raw)
                 except: hist = []
                 if hist:
-                    for h in reversed(hist[-8:]):
-                        st.markdown(f"**{h.get('fecha')}** • {h.get('usuario')}<br>{h.get('nota')}", unsafe_allow_html=True)
+                    for h in reversed(hist):
+                        st.markdown(f"""
+                        <div style="background:#F8FAFC; padding:16px; border-radius:12px; margin-bottom:10px;">
+                            <small>{h.get('fecha')} • {h.get('usuario')}</small><br>
+                            <strong>{ETAPAS.get(h.get('estado'),{}).get('label')}</strong><br>
+                            {h.get('nota')}
+                        </div>
+                        """, unsafe_allow_html=True)
                 else:
                     st.info("Sin historial registrado.")
 
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        sug = ask_ai(f"Edificio: {seleccionado}\nSugerencia de próximo paso.")
+                        sug = ask_ai(f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta.")
                     st.markdown(sug)
                 else:
                     st.warning("Activa la IA en Configuración")
@@ -866,7 +890,7 @@ def pg_edificios():
                 st.rerun()
 
         else:
-            st.info("👈 Selecciona un edificio de la lista para ver su información completa.")
+            st.info("👈 Haz clic en un edificio de la lista para ver su detalle completo.")
             
             
 
