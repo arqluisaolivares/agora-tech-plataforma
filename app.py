@@ -410,7 +410,7 @@ def pg_dashboard():
                      color="Grupo", color_discrete_map={"Comercial":"#1A9FCC","Ejecución":"#00C896","Posventa":"#8B5CF6"})
         st.plotly_chart(fig, use_container_width=True)
 
-       with col_g2:
+    with col_g2:
         # TOTAL DE EDIFICIOS / PROYECTOS POR COMERCIAL (todos los proyectos)
         conteo_por_com = df.groupby("comercial").size().reset_index(name="Cantidad")
         conteo_por_com = conteo_por_com.sort_values("Cantidad", ascending=False)
