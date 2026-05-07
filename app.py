@@ -778,42 +778,60 @@ def pg_nueva_cotizacion():
                 st.balloons()
 
 def pg_edificios():
-    hdr("🏢", "Edificios", "Selecciona un edificio para ver detalle completo")
+    hdr("🏢", "Edificios", "Selecciona uno para ver detalle completo")
 
     df = mis_proyectos()
     if df.empty:
         st.info("No hay edificios registrados aún.")
         return
 
-    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre o comercial...")
+    # ====================== FILTROS ======================
+    col_f1, col_f2, col_f3, col_f4 = st.columns([2, 1.5, 1.5, 1.5])
+    
+    with col_f1:
+        buscar = st.text_input("🔍 Buscar por nombre", placeholder="Nombre del edificio...")
+    with col_f2:
+        comercial_filter = st.selectbox("Comercial", ["Todos"] + sorted(df["comercial"].dropna().unique().tolist()))
+    with col_f3:
+        estado_filter = st.selectbox("Estado", ["Todos"] + list(ETAPAS.keys()))
+    with col_f4:
+        # Filtro por mes (última actualización)
+        df["mes"] = pd.to_datetime(df["lastUpdate"], errors='coerce').dt.strftime("%Y-%m")
+        meses = ["Todos"] + sorted(df["mes"].dropna().unique().tolist())
+        mes_filter = st.selectbox("Mes", meses)
 
+    # Aplicar filtros
     dff = df.copy()
     if buscar:
-        dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False) | 
-                  dff["comercial"].str.contains(buscar, case=False, na=False)]
+        dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False)]
+    if comercial_filter != "Todos":
+        dff = dff[dff["comercial"] == comercial_filter]
+    if estado_filter != "Todos":
+        dff = dff[dff["estado"] == estado_filter]
+    if mes_filter != "Todos":
+        dff = dff[dff["mes"] == mes_filter]
 
     col_list, col_detail = st.columns([2, 3])
 
     with col_list:
-        st.markdown(f"**{len(dff)} proyectos**")
+        st.markdown(f"**{len(dff)} proyectos encontrados**")
         
         for _, r in dff.iterrows():
             nombre = r["nombre"]
+            comercial = r.get("comercial", "—")
             estado = str(r.get("estado", "lead"))
             valor = fc(int(r.get("totalNum", 0)))
-            comercial = r.get("comercial", "—")
-            
-            # Color sólido según estado
-            estado_color = {
-                "lead": "🔵", "cotizado": "🟡", "negociacion": "🟠",
-                "aprobado": "🟣", "perdido": "🔴", "cerrado": "✅"
-            }.get(estado, "⚪")
 
-            if st.button(f"{estado_color} **{nombre}**\n{comercial} • {valor}", 
-                         key=f"edif_{r.name}", use_container_width=True):
+            etiqueta_estado = ETAPAS.get(estado, {}).get("label", estado)
+
+            if st.button(f"""
+                **{nombre}**  
+                {comercial}  
+                {valor} • {etiqueta_estado}
+            """, key=f"edif_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
-    # ====================== PANEL DETALLE MODERNO ======================
+    # ====================== PANEL DETALLE ======================
     with col_detail:
         seleccionado = st.session_state.get("edificio_seleccionado")
 
@@ -860,7 +878,7 @@ def pg_edificios():
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta."
+                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta de próximo paso."
                         sug = ask_ai(prompt)
                     st.markdown(sug)
                 else:
