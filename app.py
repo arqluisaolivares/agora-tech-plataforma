@@ -778,16 +778,15 @@ def pg_nueva_cotizacion():
                 st.balloons()
 
 def pg_edificios():
-    hdr("🏢", "Edificios", "Selecciona uno para ver detalle completo")
+    hdr("🏢", "Edificios", "Selecciona un edificio para ver detalle completo")
 
     df = mis_proyectos()
     if df.empty:
         st.info("No hay edificios registrados aún.")
         return
 
-    # ====================== FILTROS ======================
+    # Filtros
     col_f1, col_f2, col_f3, col_f4 = st.columns([2, 1.5, 1.5, 1.5])
-    
     with col_f1:
         buscar = st.text_input("🔍 Buscar por nombre", placeholder="Nombre del edificio...")
     with col_f2:
@@ -795,10 +794,8 @@ def pg_edificios():
     with col_f3:
         estado_filter = st.selectbox("Estado", ["Todos"] + list(ETAPAS.keys()))
     with col_f4:
-        # Filtro por mes (última actualización)
-        df["mes"] = pd.to_datetime(df["lastUpdate"], errors='coerce').dt.strftime("%Y-%m")
-        meses = ["Todos"] + sorted(df["mes"].dropna().unique().tolist())
-        mes_filter = st.selectbox("Mes", meses)
+        df["mes"] = pd.to_datetime(df.get("lastUpdate", pd.NaT), errors='coerce').dt.strftime("%Y-%m")
+        mes_filter = st.selectbox("Mes", ["Todos"] + sorted(df["mes"].dropna().unique().tolist()))
 
     # Aplicar filtros
     dff = df.copy()
@@ -814,20 +811,19 @@ def pg_edificios():
     col_list, col_detail = st.columns([2, 3])
 
     with col_list:
-        st.markdown(f"**{len(dff)} proyectos encontrados**")
+        st.markdown(f"**{len(dff)} proyectos**")
         
         for _, r in dff.iterrows():
             nombre = r["nombre"]
             comercial = r.get("comercial", "—")
-            estado = str(r.get("estado", "lead"))
             valor = fc(int(r.get("totalNum", 0)))
+            estado_label = ETAPAS.get(str(r.get("estado", "lead")), {}).get("label", "—")
 
-            etiqueta_estado = ETAPAS.get(estado, {}).get("label", estado)
-
+            # Tarjeta limpia y moderna
             if st.button(f"""
                 **{nombre}**  
                 {comercial}  
-                {valor} • {etiqueta_estado}
+                {valor} • {estado_label}
             """, key=f"edif_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
@@ -878,7 +874,7 @@ def pg_edificios():
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta de próximo paso."
+                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta."
                         sug = ask_ai(prompt)
                     st.markdown(sug)
                 else:
