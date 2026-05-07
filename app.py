@@ -799,12 +799,33 @@ def pg_edificios():
         
         for _, r in dff.iterrows():
             nombre = r["nombre"]
-            estado_label = ETAPAS.get(str(r.get("estado", "lead")), {}).get("label", "—")
+            estado = str(r.get("estado", "lead"))
             valor = fc(int(r.get("totalNum", 0)))
             comercial = r.get("comercial", "—")
+            
+            # Colores sólidos según estado
+            color_map = {
+                "lead": "#EFF6FF", "cotizado": "#FEFCE8", "negociacion": "#FEF3C7",
+                "aprobado": "#F3E8FF", "perdido": "#FEE2E2", "cerrado": "#ECFDF5"
+            }
+            border_color = {
+                "lead": "#3B82F6", "cotizado": "#EAB308", "negociacion": "#F59E0B",
+                "aprobado": "#8B5CF6", "perdido": "#EF4444", "cerrado": "#10B981"
+            }
+            
+            bg = color_map.get(estado, "#F8FAFC")
+            border = border_color.get(estado, "#CBD5E1")
 
-            if st.button(f"{nombre}\n{comercial} • {valor} • {estado_label}", 
-                         key=f"sel_{r.name}", use_container_width=True):
+            if st.button(f"""
+                <div style="padding:16px 0; text-align:left;">
+                    <div style="font-weight:700; font-size:16px; color:#0F172A;">{nombre}</div>
+                    <div style="font-size:13.5px; color:#475569; margin:4px 0;">{comercial}</div>
+                    <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                        <div style="font-size:18px; font-weight:800; color:#0F172A;">{valor}</div>
+                        {badge(estado)}
+                    </div>
+                </div>
+            """, key=f"sel_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
     # ====================== PANEL DETALLE ======================
@@ -816,9 +837,9 @@ def pg_edificios():
             estado = str(r.get("estado", "lead"))
 
             st.markdown(f"""
-            <div style="background:#0F172A; color:white; padding:24px; border-radius:16px; margin-bottom:20px;">
+            <div style="background:#0F172A; color:white; padding:28px; border-radius:16px; margin-bottom:24px;">
                 <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:8px 0 0 0; opacity:0.85;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -831,19 +852,19 @@ def pg_edificios():
                 c3.metric("Cuota 36m", fc(int(r.get("c36Num", 0))))
 
                 st.write(f"**Contacto:** {r.get('contacto','—')}")
-                st.write(f"**Email:** {r.get('email','—')}")
+                if r.get("email"): st.write(f"**Email:** {r.get('email')}")
                 if r.get("drive"):
-                    st.markdown(f"[📁 Abrir Drive]({r.get('drive')})")
+                    st.markdown(f"[📁 Abrir carpeta en Drive]({r.get('drive')})")
 
             with tab2:
                 hist_raw = str(r.get("historial", "[]"))
                 try: hist = json.loads(hist_raw)
                 except: hist = []
                 if hist:
-                    for h in reversed(hist[-6:]):
+                    for h in reversed(hist[-8:]):
                         st.markdown(f"""
-                        <div style="background:#F8FAFC; padding:14px; border-radius:12px; margin-bottom:10px;">
-                            <small>{h.get('fecha')} • {h.get('usuario')}</small><br>
+                        <div style="background:#F8FAFC; padding:16px; border-radius:12px; margin-bottom:12px; border-left:4px solid #00C896;">
+                            <small style="color:#64748B;">{h.get('fecha')} • {h.get('usuario')}</small><br>
                             <strong>{ETAPAS.get(h.get('estado'),{}).get('label', h.get('estado'))}</strong><br>
                             {h.get('nota')}
                         </div>
@@ -853,14 +874,13 @@ def pg_edificios():
 
             with tab3:
                 if ai_activa():
-                    with st.spinner("Generando sugerencia..."):
-                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nDame una sugerencia concreta de próximo paso."
+                    with st.spinner("Generando recomendación..."):
+                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta de próximo paso."
                         sug = ask_ai(prompt)
                     st.markdown(sug)
                 else:
-                    st.warning("Activa la IA para ver sugerencias")
+                    st.warning("Activa la IA en Configuración")
 
-            # Botones de acción
             c1, c2, c3 = st.columns(3)
             if c1.button("📝 Actualizar Estado", use_container_width=True, type="primary"):
                 st.session_state.editing = seleccionado
@@ -875,7 +895,7 @@ def pg_edificios():
                 st.rerun()
 
         else:
-            st.info("👈 Selecciona un edificio de la lista para ver su información completa.")
+            st.info("👈 Selecciona un edificio de la lista para ver su detalle completo.")
 
 
 
