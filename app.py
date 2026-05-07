@@ -777,14 +777,15 @@ def pg_nueva_cotizacion():
                 st.success(f"✅ **{nombre}** guardado como **cotizado** — ${valor/1e6:.1f}M")
                 st.balloons()
 
-    def pg_edificios():
-    hdr("🏢", "Edificios", "Selecciona uno para ver detalle completo")
+def pg_edificios():
+    hdr("🏢", "Edificios", "Selecciona un edificio para ver detalle completo")
 
     df = mis_proyectos()
     if df.empty:
         st.info("No hay edificios registrados aún.")
         return
 
+    # Buscador
     buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre o comercial...")
 
     dff = df.copy()
@@ -792,30 +793,32 @@ def pg_nueva_cotizacion():
         dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False) | 
                   dff["comercial"].str.contains(buscar, case=False, na=False)]
 
+    # Layout: Lista + Panel
     col_list, col_detail = st.columns([2, 3])
 
     with col_list:
-        st.markdown(f"**{len(dff)} proyectos**")
-        
+        st.markdown(f"**{len(dff)} proyectos encontrados**")
+
         for idx, (_, r) in enumerate(dff.iterrows()):
             nombre = r["nombre"]
             estado = str(r.get("estado", "lead"))
             valor = fc(int(r.get("totalNum", 0)))
             comercial = r.get("comercial", "—")
-            
-            # Colores sólidos según estado
-            color_map = {
-                "lead": "#EFF6FF", "cotizado": "#FEFCE8", "negociacion": "#FEF3C7",
-                "aprobado": "#F3E8FF", "perdido": "#FEE2E2", "cerrado": "#ECFDF5"
-            }
-            bg = color_map.get(estado, "#F1F5F9")
 
-            if st.button(f"{nombre}\n{comercial} • {valor}", 
-                         key=f"sel_{idx}", 
-                         use_container_width=True):
+            # Colores sólidos por estado
+            color_map = {
+                "lead": "#BFDBFE", "cotizado": "#FDE047", "negociacion": "#FDBA74",
+                "aprobado": "#C4B5FD", "perdido": "#FCA5A5", "cerrado": "#A7F3D0"
+            }
+            bg_color = color_map.get(estado, "#E2E8F0")
+
+            if st.button(f"""
+                **{nombre}**  
+                {comercial} • {valor}
+            """, key=f"edif_{idx}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
-    # ====================== PANEL DETALLE (Derecha) ======================
+    # ====================== PANEL LATERAL DETALLE ======================
     with col_detail:
         seleccionado = st.session_state.get("edificio_seleccionado")
 
@@ -827,10 +830,11 @@ def pg_nueva_cotizacion():
             st.markdown(f"""
             <div style="background:#0F172A; color:white; padding:24px; border-radius:16px; margin-bottom:20px;">
                 <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:10px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+                <p style="margin:8px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
             </div>
             """, unsafe_allow_html=True)
 
+            # Pestañas
             tab1, tab2, tab3 = st.tabs(["📋 Información", "📜 Historial", "🤖 Sugerencia IA"])
 
             with tab1:
@@ -842,16 +846,16 @@ def pg_nueva_cotizacion():
                 st.write(f"**Contacto:** {r.get('contacto','—')}")
                 if r.get("email"): st.write(f"**Email:** {r.get('email')}")
                 if r.get("drive"):
-                    st.markdown(f"[📁 Abrir Drive]({r.get('drive')})")
+                    st.markdown(f"[📁 Abrir carpeta en Drive]({r.get('drive')})")
 
             with tab2:
                 hist_raw = str(r.get("historial", "[]"))
                 try: hist = json.loads(hist_raw)
                 except: hist = []
                 if hist:
-                    for h in reversed(hist[-8:]):
+                    for h in reversed(hist):
                         st.markdown(f"""
-                        <div style="background:#F8FAFC; padding:16px; border-radius:12px; margin-bottom:12px;">
+                        <div style="background:#F8FAFC; padding:16px; border-radius:12px; margin-bottom:12px; border-left:4px solid #00C896;">
                             <small>{h.get('fecha')} • {h.get('usuario')}</small><br>
                             <strong>{ETAPAS.get(h.get('estado'),{}).get('label')}</strong><br>
                             {h.get('nota')}
@@ -863,11 +867,11 @@ def pg_nueva_cotizacion():
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia de próximo paso."
+                        prompt = f"Edificio: {seleccionado}\nEstado: {ETAPAS.get(estado,{}).get('label')}\nValor: {fc(int(r.get('totalNum',0)))}\nSugerencia concreta de próximo paso."
                         sug = ask_ai(prompt)
                     st.markdown(sug)
                 else:
-                    st.warning("Activa la IA en Configuración")
+                    st.warning("Activa la IA en Configuración para ver sugerencias.")
 
             # Botones de acción
             c1, c2, c3 = st.columns(3)
@@ -885,6 +889,7 @@ def pg_nueva_cotizacion():
 
         else:
             st.info("👈 Selecciona un edificio de la lista para ver su información detallada.")
+            
 
 
 def pg_correos():
