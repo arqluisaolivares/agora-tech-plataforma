@@ -411,18 +411,21 @@ def pg_dashboard():
         st.plotly_chart(fig, use_container_width=True)
 
     with col_g2:
-        # CORRECCIÓN: Contamos TODAS las cotizaciones (todos los proyectos que tienen valor)
+        # CORRECCIÓN ROBUSTA - cuenta TODAS las cotizaciones (proyectos con valor)
         df["totalNum"] = pd.to_numeric(df["totalNum"], errors='coerce').fillna(0)
+        
+        # Contamos todos los proyectos que tienen valor > 0
         cot_por_com = df[df["totalNum"] > 0].groupby("comercial").size().reset_index(name="Cantidad")
         cot_por_com = cot_por_com.sort_values("Cantidad", ascending=False)
         
         fig2 = px.bar(cot_por_com, x="Cantidad", y="comercial", orientation="h",
                       title="Cotizaciones Entregadas por Comercial", 
-                      color="Cantidad", color_continuous_scale=["#00C896","#1A9FCC"])
+                      color="Cantidad", color_continuous_scale=["#00C896", "#1A9FCC"])
         st.plotly_chart(fig2, use_container_width=True)
         
-        # Para verificar que ahora sí cuenta todo
-        st.caption(f"Total cotizaciones contadas: **{len(df[df['totalNum'] > 0])}**")
+        # Información de verificación
+        total_cotizaciones = len(df[df["totalNum"] > 0])
+        st.caption(f"**Total cotizaciones contadas:** {total_cotizaciones} (debe ser cercano a 127)")
 
     # Alertas por Comercial
     st.markdown("### 🚨 Alertas por Comercial")
