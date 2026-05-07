@@ -785,8 +785,9 @@ def pg_edificios():
         st.info("No hay edificios registrados aún.")
         return
 
-    # Filtros simples
+    # Filtros
     buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+
     dff = df.copy()
     if buscar:
         dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False)]
@@ -799,11 +800,25 @@ def pg_edificios():
         for _, r in dff.iterrows():
             nombre = r["nombre"]
             comercial = r.get("comercial", "—")
-            
-            # Tarjeta muy simple y limpia
-            if st.button(f"{nombre}\n{comercial}", 
-                         key=f"edif_{r.name}", 
-                         use_container_width=True):
+            estado = str(r.get("estado", "lead"))
+            valor = fc(int(r.get("totalNum", 0)))
+
+            # Colores según estado
+            if estado in ["perdido"]:
+                estado_color = "🔴"
+            elif estado in ["cotizado", "negociacion"]:
+                estado_color = "🟡"
+            else:
+                estado_color = "🟢"
+
+            estado_label = ETAPAS.get(estado, {}).get("label", estado)
+
+            # Tarjeta limpia y justificada a la izquierda
+            if st.button(f"""
+                **{nombre}**  
+                {comercial}  
+                {valor} {estado_color} {estado_label}
+            """, key=f"edif_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
     # ====================== PANEL DETALLE ======================
@@ -838,15 +853,23 @@ def pg_edificios():
                 except: hist = []
                 if hist:
                     for h in reversed(hist[-8:]):
-                        st.markdown(f"**{h.get('fecha')}** - {h.get('usuario')}<br>{h.get('nota')}", unsafe_allow_html=True)
+                        st.markdown(f"""
+                        <div style="background:#F8FAFC; padding:16px; border-radius:12px; margin-bottom:12px;">
+                            <small>{h.get('fecha')} • {h.get('usuario')}</small><br>
+                            <strong>{ETAPAS.get(h.get('estado'),{}).get('label')}</strong><br>
+                            {h.get('nota')}
+                        </div>
+                        """, unsafe_allow_html=True)
                 else:
                     st.info("Sin historial registrado.")
 
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        sug = ask_ai(f"Edificio: {seleccionado}\nSugerencia concreta de próximo paso.")
+                        sug = ask_ai(f"Edificio: {seleccionado}\nSugerencia concreta.")
                     st.markdown(sug)
+                else:
+                    st.warning("Activa la IA en Configuración")
 
             c1, c2, c3 = st.columns(3)
             if c1.button("📝 Actualizar Estado", use_container_width=True, type="primary"):
