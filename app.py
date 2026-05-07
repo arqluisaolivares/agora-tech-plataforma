@@ -778,7 +778,7 @@ def pg_nueva_cotizacion():
                 st.balloons()
 
 def pg_edificios():
-    hdr("🏢", "Edificios", "Haz clic en un edificio para ver su detalle")
+    hdr("🏢", "Edificios", "Haz clic en un edificio para ver detalle completo")
 
     df = mis_proyectos()
     if df.empty:
@@ -793,7 +793,6 @@ def pg_edificios():
 
     col_list, col_detail = st.columns([2, 3])
 
-    # ==================== LISTA SIMPLE (izquierda) ====================
     with col_list:
         st.markdown(f"**{len(dff)} proyectos**")
         
@@ -803,11 +802,15 @@ def pg_edificios():
             valor = fc(int(r.get("totalNum", 0)))
             estado_label = ETAPAS.get(str(r.get("estado", "lead")), {}).get("label", "—")
 
-            if st.button(f"{nombre}\n{comercial} • {valor} • {estado_label}", 
-                         key=f"edif_{r.name}", use_container_width=True):
+            # Diseño simple como el inicial que te gustaba
+            if st.button(f"""
+                **{nombre}**
+                {comercial}
+                {valor} • {estado_label}
+            """, key=f"edif_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
-    # ==================== PANEL DETALLE (derecha) ====================
+    # ====================== PANEL DETALLE A LA DERECHA ======================
     with col_detail:
         seleccionado = st.session_state.get("edificio_seleccionado")
 
@@ -815,8 +818,12 @@ def pg_edificios():
             r = df[df["nombre"] == seleccionado].iloc[0]
             estado = str(r.get("estado", "lead"))
 
-            st.markdown(f"### {seleccionado}")
-            st.caption(f"{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}")
+            st.markdown(f"""
+            <div style="background:#0F172A; color:white; padding:24px; border-radius:16px; margin-bottom:20px;">
+                <h2 style="margin:0; color:white;">{seleccionado}</h2>
+                <p style="margin:8px 0 0 0;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
             tab1, tab2, tab3 = st.tabs(["📋 Información", "📜 Historial", "🤖 Sugerencia IA"])
 
@@ -825,9 +832,7 @@ def pg_edificios():
                 c1.metric("Valor Total", fc(int(r.get("totalNum", 0))))
                 c2.metric("Cuota 24m", fc(int(r.get("c24Num", 0))))
                 c3.metric("Cuota 36m", fc(int(r.get("c36Num", 0))))
-
                 st.write(f"**Contacto:** {r.get('contacto','—')}")
-                if r.get("email"): st.write(f"**Email:** {r.get('email')}")
 
             with tab2:
                 hist_raw = str(r.get("historial", "[]"))
@@ -835,21 +840,18 @@ def pg_edificios():
                 except: hist = []
                 if hist:
                     for h in reversed(hist[-8:]):
-                        st.write(f"**{h.get('fecha')}** - {h.get('usuario')}")
-                        st.write(h.get('nota'))
-                        st.divider()
+                        st.markdown(f"**{h.get('fecha')}** • {h.get('usuario')}<br>{h.get('nota')}", unsafe_allow_html=True)
                 else:
                     st.info("Sin historial registrado.")
 
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
-                        sug = ask_ai(f"Edificio: {seleccionado}\nSugerencia concreta de próximo paso.")
+                        sug = ask_ai(f"Edificio: {seleccionado}\nSugerencia de próximo paso.")
                     st.markdown(sug)
                 else:
                     st.warning("Activa la IA en Configuración")
 
-            # Botones de acción
             c1, c2, c3 = st.columns(3)
             if c1.button("📝 Actualizar Estado", use_container_width=True, type="primary"):
                 st.session_state.editing = seleccionado
@@ -864,7 +866,8 @@ def pg_edificios():
                 st.rerun()
 
         else:
-            st.info("👈 Selecciona un edificio de la lista para ver su información detallada.")
+            st.info("👈 Selecciona un edificio de la lista para ver su información completa.")
+            
             
 
 
