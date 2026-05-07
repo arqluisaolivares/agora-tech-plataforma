@@ -778,108 +778,126 @@ def pg_nueva_cotizacion():
                 st.balloons()
 
 def pg_edificios():
-    hdr("🏢", "Edificios", "Haz clic en un edificio para ver detalle completo")
+    hdr("🏢", "Edificios", "Selecciona uno para ver detalle completo")
 
     df = mis_proyectos()
     if df.empty:
         st.info("No hay edificios registrados aún.")
         return
 
-    # Buscador
-    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre o comercial...")
 
     dff = df.copy()
     if buscar:
-        dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False)]
+        dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False) | 
+                  dff["comercial"].str.contains(buscar, case=False, na=False)]
 
-    # ====================== LISTA DE EDIFICIOS ======================
-    col_list, col_detail = st.columns([1.8, 3.2])
+    # Layout moderno: Lista + Panel
+    col_list, col_detail = st.columns([1.9, 3.1])
 
     with col_list:
-        st.markdown(f"**{len(dff)} edificios**")
-        
+        st.markdown(f"**{len(dff)} proyectos**")
+
         for _, r in dff.iterrows():
             nombre = r["nombre"]
             estado = str(r.get("estado", "lead"))
             valor = fc(int(r.get("totalNum", 0)))
+            comercial = r.get("comercial", "—")
 
-            if st.button(f"{nombre} — {valor} — {ETAPAS.get(estado,{}).get('label', estado)}", 
-                         key=f"btn_{r.name}", use_container_width=True):
+            badge_html = badge(estado)
+
+            # Tarjeta moderna
+            if st.button(f"""
+                <div style="text-align:left; width:100%;">
+                    <div style="font-weight:700; font-size:15.5px;">{nombre}</div>
+                    <div style="font-size:13px; color:#64748B;">{comercial} • {valor}</div>
+                    <div style="margin-top:6px;">{badge_html}</div>
+                </div>
+            """, key=f"sel_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = nombre
 
-    # ====================== PANEL DETALLE (Izquierda) ======================
+    # ====================== PANEL DETALLE MODERNO ======================
     with col_detail:
         seleccionado = st.session_state.get("edificio_seleccionado")
 
         if seleccionado:
             r = df[df["nombre"] == seleccionado].iloc[0]
+            estado = str(r.get("estado", "lead"))
 
-            st.markdown(f"### 🏢 {seleccionado}")
-            st.markdown(f"**Comercial:** {r.get('comercial', '—')}")
+            # Cabecera moderna
+            st.markdown(f"""
+            <div style="background:linear-gradient(90deg, #0F172A, #1E2937); color:white; padding:20px; border-radius:16px; margin-bottom:20px;">
+                <h2 style="margin:0; color:white;">{seleccionado}</h2>
+                <p style="margin:8px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-            # Información rápida
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Valor Total", fc(int(r.get("totalNum", 0))))
-            c2.metric("Estado", ETAPAS.get(str(r.get("estado")), {}).get("label", r.get("estado")))
-            c3.metric("Cuota 36m", fc(int(r.get("c36Num", 0))))
-
-            tab1, tab2, tab3 = st.tabs(["📜 Historial", "📋 Información", "🤖 Sugerencia IA"])
+            tab1, tab2, tab3 = st.tabs(["📋 Información General", "📜 Historial Completo", "🤖 Sugerencia IA"])
 
             with tab1:
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Valor Total", fc(int(r.get("totalNum", 0))))
+                c2.metric("Cuota 24m", fc(int(r.get("c24Num", 0))))
+                c3.metric("Cuota 36m", fc(int(r.get("c36Num", 0))))
+
+                st.markdown("**Contacto**")
+                st.write(f"**Nombre:** {r.get('contacto','—')}")
+                st.write(f"**Email:** {r.get('email','—')}")
+                if r.get("drive"):
+                    st.markdown(f"[📁 Abrir Drive]({r.get('drive')})")
+
+            with tab2:
                 hist_raw = str(r.get("historial", "[]"))
-                try:
-                    hist = json.loads(hist_raw)
-                except:
-                    hist = []
+                try: hist = json.loads(hist_raw)
+                except: hist = []
+                
                 if hist:
                     for h in reversed(hist):
                         st.markdown(f"""
-                        <div class="hist-item">
-                            <div class="hist-date">{h.get('fecha')} • {h.get('usuario')}</div>
+                        <div style="background:#F8FAFC; padding:14px; border-radius:12px; margin-bottom:10px; border-left:4px solid #00C896;">
+                            <small style="color:#64748B;">{h.get('fecha')} • {h.get('usuario')}</small><br>
                             <strong>{ETAPAS.get(h.get('estado'),{}).get('label', h.get('estado'))}</strong><br>
                             {h.get('nota')}
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.info("Sin historial registrado.")
-
-            with tab2:
-                st.write(f"**Contacto:** {r.get('contacto', '—')}")
-                st.write(f"**Email:** {r.get('email', '—')}")
-                if r.get("drive"):
-                    st.markdown(f"[📁 Ver carpeta en Drive]({r.get('drive')})")
-                st.caption(f"Última actualización: {str(r.get('lastUpdate','—'))[:16]}")
+                    st.info("Sin historial aún.")
 
             with tab3:
                 if ai_activa():
-                    with st.spinner("Generando sugerencia personalizada..."):
-                        prompt = f"""Edificio: {nombre}
-Estado: {ETAPAS.get(str(r.get('estado')),{}).get('label')}
+                    with st.spinner("Generando recomendación estratégica..."):
+                        prompt = f"""Edificio: {seleccionado}
+Estado: {ETAPAS.get(estado,{}).get('label')}
 Valor: {fc(int(r.get('totalNum',0)))}
 Última nota: {r.get('lastNote','')}
 
-Dame una recomendación concreta y accionable para este edificio (máximo 5 líneas)."""
+Dame una sugerencia clara y accionable de próximo paso para este edificio."""
                         sug = ask_ai(prompt)
                     st.markdown(sug)
                 else:
-                    st.warning("Activa la IA en Configuración para ver sugerencias.")
+                    st.warning("🔴 Activa la IA en Configuración")
 
             # Botones de acción
             c1, c2, c3 = st.columns(3)
-            if c1.button("📝 Actualizar Estado", use_container_width=True):
+            if c1.button("📝 Actualizar Estado", use_container_width=True, type="primary"):
                 st.session_state.editing = seleccionado
                 st.session_state.page = "Actualizar Estado"
                 st.rerun()
             if c2.button("✉️ Generar Correo", use_container_width=True):
                 st.session_state.page = "Correos IA"
                 st.rerun()
-            if c3.button("📊 Encuesta", use_container_width=True):
+            if c3.button("📊 Encuesta Prospecto", use_container_width=True):
                 st.session_state.editing = seleccionado
                 st.session_state.page = "Encuesta Prospecto"
                 st.rerun()
 
         else:
-            st.info("👈 Selecciona un edificio de la lista para ver su detalle completo.")
+            st.markdown("""
+            <div style="text-align:center; padding:60px 20px; color:#94A3B8;">
+                <h3>Selecciona un edificio de la lista</h3>
+                <p>Aparecerá aquí el detalle completo, historial y sugerencia IA</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def pg_correos():
