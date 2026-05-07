@@ -410,22 +410,19 @@ def pg_dashboard():
                      color="Grupo", color_discrete_map={"Comercial":"#1A9FCC","Ejecución":"#00C896","Posventa":"#8B5CF6"})
         st.plotly_chart(fig, use_container_width=True)
 
-    with col_g2:
-        # CORRECCIÓN ROBUSTA - cuenta TODAS las cotizaciones (proyectos con valor)
-        df["totalNum"] = pd.to_numeric(df["totalNum"], errors='coerce').fillna(0)
+       with col_g2:
+        # TOTAL DE EDIFICIOS / PROYECTOS POR COMERCIAL (todos los proyectos)
+        conteo_por_com = df.groupby("comercial").size().reset_index(name="Cantidad")
+        conteo_por_com = conteo_por_com.sort_values("Cantidad", ascending=False)
         
-        # Contamos todos los proyectos que tienen valor > 0
-        cot_por_com = df[df["totalNum"] > 0].groupby("comercial").size().reset_index(name="Cantidad")
-        cot_por_com = cot_por_com.sort_values("Cantidad", ascending=False)
-        
-        fig2 = px.bar(cot_por_com, x="Cantidad", y="comercial", orientation="h",
-                      title="Cotizaciones Entregadas por Comercial", 
+        fig2 = px.bar(conteo_por_com, x="Cantidad", y="comercial", orientation="h",
+                      title="Edificios por Comercial", 
                       color="Cantidad", color_continuous_scale=["#00C896", "#1A9FCC"])
         st.plotly_chart(fig2, use_container_width=True)
         
-        # Información de verificación
-        total_cotizaciones = len(df[df["totalNum"] > 0])
-        st.caption(f"**Total cotizaciones contadas:** {total_cotizaciones} (debe ser cercano a 127)")
+        # Verificación
+        st.caption(f"**Total de edificios en el sistema:** {len(df)}")
+
 
     # Alertas por Comercial
     st.markdown("### 🚨 Alertas por Comercial")
