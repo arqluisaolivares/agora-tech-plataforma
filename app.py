@@ -876,67 +876,70 @@ def pg_edificios():
 
             with tab2:
                 hist_raw = str(r.get("historial", "[]"))
-                try: hist = json.loads(hist_raw)
-                except: hist = []
+                try:
+                    hist = json.loads(hist_raw)
+                except:
+                    hist = []
+
                 if hist:
                     for h in reversed(hist[-8:]):
 
-    estado_h = h.get("estado", "lead")
-    color_estado = ETAPAS.get(estado_h, {}).get("color", "#E2E8F0")
-    label_estado = ETAPAS.get(estado_h, {}).get("label", estado_h)
+                        estado_h = h.get("estado", "lead")
+                        color_estado = ETAPAS.get(estado_h, {}).get("color", "#E2E8F0")
+                        label_estado = ETAPAS.get(estado_h, {}).get("label", estado_h)
 
-    st.markdown(f"""
-    <div style="
-        position:relative;
-        padding:18px 18px 18px 24px;
-        margin-bottom:16px;
-        border-left:4px solid {color_estado};
-        background:white;
-        border-radius:12px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.04);
-    ">
+                        st.markdown(f"""
+                        <div style="
+                            position:relative;
+                            padding:18px 18px 18px 24px;
+                            margin-bottom:16px;
+                            border-left:4px solid {color_estado};
+                            background:white;
+                            border-radius:12px;
+                            box-shadow:0 2px 8px rgba(0,0,0,0.04);
+                        ">
 
-        <div style="
-            position:absolute;
-            left:-8px;
-            top:24px;
-            width:12px;
-            height:12px;
-            border-radius:50%;
-            background:{color_estado};
-        "></div>
+                            <div style="
+                                position:absolute;
+                                left:-8px;
+                                top:24px;
+                                width:12px;
+                                height:12px;
+                                border-radius:50%;
+                                background:{color_estado};
+                            "></div>
 
-        <div style="
-            font-size:11px;
-            color:#94A3B8;
-            margin-bottom:6px;
-            font-weight:600;
-        ">
-            {h.get('fecha')} • {h.get('usuario')}
-        </div>
+                            <div style="
+                                font-size:11px;
+                                color:#94A3B8;
+                                margin-bottom:6px;
+                                font-weight:600;
+                            ">
+                                {h.get('fecha')} • {h.get('usuario')}
+                            </div>
 
-        <div style="
-            font-size:13px;
-            font-weight:700;
-            margin-bottom:8px;
-            color:#04111E;
-        ">
-            {label_estado}
-        </div>
+                            <div style="
+                                font-size:13px;
+                                font-weight:700;
+                                margin-bottom:8px;
+                                color:#04111E;
+                            ">
+                                {label_estado}
+                            </div>
 
-        <div style="
-            font-size:14px;
-            line-height:1.6;
-            color:#334155;
-        ">
-            {h.get('nota')}
-        </div>
+                            <div style="
+                                font-size:14px;
+                                line-height:1.6;
+                                color:#334155;
+                            ">
+                                {h.get('nota')}
+                            </div>
 
-    </div>
-    """, unsafe_allow_html=True)
+                        </div>
+                        """, unsafe_allow_html=True)
+
                 else:
                     st.info("Sin historial registrado.")
-
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
