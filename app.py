@@ -355,7 +355,21 @@ def fc(n):
     try:
         n=int(float(n or 0))
         return "$0" if n==0 else "$"+f"{n:,}".replace(",",".")
-    except: return "$0"
+    except:
+        return "$0"
+
+def dinero(r, num_col, text_col):
+    try:
+        n = int(float(r.get(num_col) or 0))
+    except:
+        n = 0
+
+    if n == 0:
+        txt = str(r.get(text_col, "") or "")
+        nums = "".join(ch for ch in txt if ch.isdigit())
+        n = int(nums) if nums else 0
+
+    return n
 
 def hdr(icon, title, sub=""):
     st.markdown(f"""<div style='display:flex;align-items:center;gap:14px;margin-bottom:24px;
@@ -803,9 +817,12 @@ def pg_edificios():
         st.markdown(f"**{len(dff)} proyectos**")
 
         for _, r in dff.iterrows():
-            tn = int(r.get("totalNum") or 0)
-            total = fc(tn) if tn else "$0"
-            c36 = fc(int(r.get("c36Num") or 0)) if tn else "—"
+            tn = dinero(r, "totalNum", "total")
+            c24n = dinero(r, "c24Num", "cuota24")
+            c36n = dinero(r, "c36Num", "cuota36")
+
+            total = fc(tn)
+            c36 = fc(c36n) if c36n else "—"
             est = str(r.get("estado", "lead"))
             drive = str(r.get("drive", "") or "")
             hist_raw = str(r.get("historial", "") or "[]")
@@ -848,9 +865,9 @@ def pg_edificios():
 
             with tab1:
                 c1, c2, c3 = st.columns(3)
-                c1.metric("Valor Total", fc(int(r.get("totalNum", 0))))
-                c2.metric("Cuota 24m", fc(int(r.get("c24Num", 0))))
-                c3.metric("Cuota 36m", fc(int(r.get("c36Num", 0))))
+                c1.metric("Valor Total", fc(dinero(r, "totalNum", "total")))
+                c2.metric("Cuota 24m", fc(dinero(r, "c24Num", "cuota24")))
+                c3.metric("Cuota 36m", fc(dinero(r, "c36Num", "cuota36")))
 
                 st.write(f"**Contacto:** {r.get('contacto','—')}")
                 if r.get("email"): st.write(f"**Email:** {r.get('email')}")
