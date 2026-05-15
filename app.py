@@ -729,6 +729,50 @@ def pg_actualizar():
                 index=ESTADOS_LISTA.index(est_actual) if est_actual in ESTADOS_LISTA else 0)
             nota=st.text_area("Nota de seguimiento * (obligatoria)",
                               placeholder="¿Qué pasó? ¿Cuál es el próximo paso? ¿Quién respondió?...")
+                        st.markdown("### ACTUALIZAR DATOS / RECOTIZACIÓN")
+
+            d1, d2 = st.columns(2)
+
+            with d1:
+                nuevo_contacto = st.text_input(
+                    "Contacto",
+                    value=str(r.get("contacto","") or "")
+                )
+
+                nuevo_celular = st.text_input(
+                    "Celular / WhatsApp",
+                    value=str(r.get("celular","") or "")
+                )
+
+                nueva_direccion = st.text_input(
+                    "Dirección",
+                    value=str(r.get("direccion","") or "")
+                )
+
+            with d2:
+                nuevo_total = st.number_input(
+                    "Nuevo valor total ($)",
+                    min_value=0,
+                    value=int(dinero(r, "totalNum", "total")),
+                    step=1000000,
+                    format="%d"
+                )
+
+                nueva_cuota24 = st.number_input(
+                    "Nueva cuota 24 meses ($)",
+                    min_value=0,
+                    value=int(dinero(r, "c24Num", "cuota24")),
+                    step=10000,
+                    format="%d"
+                )
+
+                nueva_cuota36 = st.number_input(
+                    "Nueva cuota 36 meses ($)",
+                    min_value=0,
+                    value=int(dinero(r, "c36Num", "cuota36")),
+                    step=10000,
+                    format="%d"
+                )
             
 
             # Campos adicionales para etapas de ejecución
@@ -751,14 +795,35 @@ def pg_actualizar():
                     # Guardar en historial
                     agregar_historial(sel, nuevo_e, nota, u["nombre"])
                     # Campos adicionales
-                    extras={}
-                    if contrato: extras["contrato"]=contrato
-                    if financiacion: extras["financiacion_info"]=financiacion
-                    if obra_ini: extras["obra_inicio"]=obra_ini
-                    if obra_fin: extras["obra_fin"]=obra_fin
-                    if extras: update_proy(sel,extras)
-                    st.success(f"✅ **{sel}** → {ETAPAS.get(nuevo_e,{'label':nuevo_e})['label']} — guardado en historial")
-                    st.session_state.editing=""; st.rerun()
+            extras = {
+
+                "contacto": nuevo_contacto,
+                "celular": nuevo_celular,
+                "direccion": nueva_direccion,
+
+                "total": fc(nuevo_total),
+                "totalNum": nuevo_total,
+
+                "cuota24": fc(nueva_cuota24),
+                "cuota36": fc(nueva_cuota36),
+
+                "c24Num": nueva_cuota24,
+                "c36Num": nueva_cuota36,
+            }
+
+            if contrato:
+                extras["contrato"] = contrato
+
+            if financiacion:
+                extras["financiacion_info"] = financiacion
+
+            if obra_ini:
+                extras["obra_inicio"] = obra_ini
+
+            if obra_fin:
+                extras["obra_fin"] = obra_fin
+
+            update_proy(sel, extras)
 
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
@@ -930,7 +995,7 @@ def pg_edificios():
             st.markdown(f"""
             <div style="background:#0F172A; color:white; padding:28px; border-radius:16px; margin-bottom:24px;">
                 <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')}</p>
             </div>
             """, unsafe_allow_html=True)
 
