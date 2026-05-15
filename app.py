@@ -230,7 +230,7 @@ h1,h2,h3{font-family:'Sora',sans-serif!important}
 .hist-date{font-size:10px;color:#8BA3BD;margin-bottom:4px;font-weight:700}
 .grupo-tag{font-size:9px;font-weight:700;color:#8BA3BD;text-transform:uppercase;letter-spacing:1.5px;margin:16px 0 6px;display:block}
 div[data-testid="stForm"]{border:none!important;padding:0!important}
-[data-testid="stSidebar"] .stButton>button{background:transparent!important;color:rgba(255,255,255,.6)!important;font-weight:500!important;border:none!important;box-shadow:none!important;border-radius:8px!important;text-align:left!important;font-size:13px!important;transform:none!important}
+[data-testid="stSidebar"] .stButton>button{background:transparent!important;color:rgba(255,255,255,.6)!important;font-weight:800!important;border:none!important;box-shadow:none!important;border-radius:8px!important;text-align:left!important;font-size:13px!important;transform:none!important}
 [data-testid="stSidebar"] .stButton>button:hover{background:rgba(255,255,255,.08)!important;color:white!important}
 </style>
 """, unsafe_allow_html=True)
@@ -512,7 +512,7 @@ def sidebar():
         for icono,nombre in todas:
             activo=st.session_state.page==nombre
             if activo: st.markdown('<div style="background:rgba(0,200,150,.15);border:1px solid rgba(0,200,150,.3);border-radius:8px;margin-bottom:2px">',unsafe_allow_html=True)
-            if st.button(f"{icono}  {nombre}",key=f"nav_{nombre}",use_container_width=True):
+            if st.button(f"{icono}  {nombre.upper()}",key=f"nav_{nombre}",use_container_width=True):
                 st.session_state.page=nombre; st.rerun()
             if activo: st.markdown('</div>',unsafe_allow_html=True)
 
