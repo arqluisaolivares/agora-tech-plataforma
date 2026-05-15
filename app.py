@@ -372,14 +372,6 @@ def dinero(r, num_col, text_col):
     return n
 
 def hdr(icon, title, sub=""):
-    st.markdown(f"""<div style='display:flex;align-items:center;gap:14px;margin-bottom:24px;
-      padding-bottom:16px;border-bottom:1px solid #E3EAF3'>
-      <div style='width:42px;height:42px;border-radius:10px;
-        background:linear-gradient(135deg,#00C896,#1A9FCC);display:flex;
-        align-items:center;justify-content:center;font-size:20px;flex-shrink:0'>{icon}</div>
-      <div><div style='font-family:Sora,sans-serif;font-size:20px;font-weight:700;color:#04111E'>{title}</div>
-        {'<div style="font-size:12px;color:#8BA3BD;margin-top:2px">'+sub+'</div>' if sub else ''}</div>
-    </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # DASHBOARD CON NÚMEROS CLAROS
@@ -889,57 +881,26 @@ def pg_edificios():
                         label_estado = ETAPAS.get(estado_h, {}).get("label", estado_h)
 
                         st.markdown(f"""
-                        <div style="
-                            position:relative;
-                            padding:18px 18px 18px 24px;
-                            margin-bottom:16px;
-                            border-left:4px solid {color_estado};
-                            background:white;
-                            border-radius:12px;
-                            box-shadow:0 2px 8px rgba(0,0,0,0.04);
-                        ">
+<div style="position:relative;padding:18px 18px 18px 24px;margin-bottom:16px;border-left:4px solid {color_estado};background:white;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+    <div style="position:absolute;left:-8px;top:24px;width:12px;height:12px;border-radius:50%;background:{color_estado};"></div>
 
-                            <div style="
-                                position:absolute;
-                                left:-8px;
-                                top:24px;
-                                width:12px;
-                                height:12px;
-                                border-radius:50%;
-                                background:{color_estado};
-                            "></div>
+    <div style="font-size:11px;color:#94A3B8;margin-bottom:6px;font-weight:600;">
+        {h.get('fecha')} • {h.get('usuario')}
+    </div>
 
-                            <div style="
-                                font-size:11px;
-                                color:#94A3B8;
-                                margin-bottom:6px;
-                                font-weight:600;
-                            ">
-                                {h.get('fecha')} • {h.get('usuario')}
-                            </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:#04111E;">
+        {label_estado}
+    </div>
 
-                            <div style="
-                                font-size:13px;
-                                font-weight:700;
-                                margin-bottom:8px;
-                                color:#04111E;
-                            ">
-                                {label_estado}
-                            </div>
-
-                            <div style="
-                                font-size:14px;
-                                line-height:1.6;
-                                color:#334155;
-                            ">
-                                {h.get('nota')}
-                            </div>
-
-                        </div>
-                        """, unsafe_allow_html=True)
+    <div style="font-size:14px;line-height:1.6;color:#334155;">
+        {h.get('nota')}
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
                 else:
                     st.info("Sin historial registrado.")
+                    
             with tab3:
                 if ai_activa():
                     with st.spinner("Generando sugerencia..."):
