@@ -889,7 +889,7 @@ def pg_edificios():
                         st.markdown("----")
                         st.markdown(f"##### {label_estado}")
                         st.caption(f"{h.get('fecha')} · {h.get('usuario')}")
-                        st.info(h.get("nota", ""))
+                        st.info(str(h.get("nota", "")).upper())
                 else:
                     st.info("Sin historial registrado.")
                     
