@@ -729,7 +729,7 @@ def pg_actualizar():
                 index=ESTADOS_LISTA.index(est_actual) if est_actual in ESTADOS_LISTA else 0)
             nota=st.text_area("Nota de seguimiento * (obligatoria)",
                               placeholder="¿Qué pasó? ¿Cuál es el próximo paso? ¿Quién respondió?...")
-                        st.markdown("### ACTUALIZAR DATOS / RECOTIZACIÓN")
+            st.markdown("### ACTUALIZAR DATOS / RECOTIZACIÓN")
 
             d1, d2 = st.columns(2)
 
