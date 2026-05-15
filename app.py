@@ -372,6 +372,14 @@ def dinero(r, num_col, text_col):
     return n
 
 def hdr(icon, title, sub=""):
+    st.markdown(f"""<div style='display:flex;align-items:center;gap:14px;margin-bottom:24px;
+      padding-bottom:16px;border-bottom:1px solid #E3EAF3'>
+      <div style='width:42px;height:42px;border-radius:10px;
+        background:linear-gradient(135deg,#00C896,#1A9FCC);display:flex;
+        align-items:center;justify-content:center;font-size:20px;flex-shrink:0'>{icon}</div>
+      <div><div style='font-family:Sora,sans-serif;font-size:20px;font-weight:700;color:#04111E'>{title}</div>
+        {'<div style="font-size:12px;color:#8BA3BD;margin-top:2px">'+sub+'</div>' if sub else ''}</div>
+    </div>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # DASHBOARD CON NÚMEROS CLAROS
