@@ -821,12 +821,29 @@ def pg_edificios():
         st.info("No hay edificios registrados aún.")
         return
 
-    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+    c1, c2, c3 = st.columns([2, 1, 1])
+
+    with c1:
+        buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+
+    with c2:
+        estados_disponibles = ["Todos"] + sorted(df["estado"].dropna().astype(str).unique().tolist())
+        filtro_estado = st.selectbox("Estado", estados_disponibles)
+
+    with c3:
+        comerciales_disponibles = ["Todos"] + sorted(df["comercial"].dropna().astype(str).unique().tolist())
+        filtro_comercial = st.selectbox("Comercial", comerciales_disponibles)
 
     dff = df.copy()
+
     if buscar:
         dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False)]
 
+    if filtro_estado != "Todos":
+        dff = dff[dff["estado"].astype(str) == filtro_estado]
+
+    if filtro_comercial != "Todos":
+        dff = dff[dff["comercial"].astype(str) == filtro_comercial]
     col_list, col_detail = st.columns([2, 3])
 
     with col_list:
