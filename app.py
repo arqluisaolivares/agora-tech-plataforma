@@ -884,12 +884,12 @@ def pg_edificios():
                 if hist:
                     for h in reversed(hist[-8:]):
                         estado_h = h.get("estado", "lead")
-                        label_estado = ETAPAS.get(estado_h, {}).get("label", estado_h)
+                        label_estado = ETAPAS.get(estado_h, {}).get("label", estado_h).upper()
 
                         st.markdown("----")
                         st.markdown(f"##### {label_estado}")
                         st.caption(f"{h.get('fecha')} · {h.get('usuario')}")
-                        st.info(str(h.get("nota", "")).upper())
+                        st.markdown(f"**{str(h.get('nota', '')).upper()}**")
                 else:
                     st.info("Sin historial registrado.")
                     
