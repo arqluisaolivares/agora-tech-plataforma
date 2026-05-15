@@ -66,6 +66,10 @@ def cargar_proyectos():
                 for col in ['totalNum', 'c24Num', 'c36Num']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+
+                if "estado" in df.columns:
+                    df["estado"] = df["estado"].apply(normalizar_estado_app)
+
                 return df.to_dict('records')
         except:
             pass
@@ -191,6 +195,24 @@ ETAPAS = {
     "cerrado":        {"label":"✅ Cerrado",          "grupo":"Posventa",   "color":"#D1FAF0"},
 }
 ESTADOS_LISTA = list(ETAPAS.keys())
+
+def normalizar_estado_app(estado):
+    e = str(estado or "").strip().lower()
+
+    if "aprobado" in e:
+        return "aprobado"
+    if "negocia" in e:
+        return "negociacion"
+    if "cotiz" in e:
+        return "cotizado"
+    if "rechaz" in e or "perdido" in e:
+        return "perdido"
+    if "cerrado" in e:
+        return "cerrado"
+    if "lead" in e:
+        return "lead"
+
+    return e if e in ETAPAS else "lead"
 
 def badge(estado):
     e = ETAPAS.get(estado, {"label":estado,"color":"#F1F5F9"})
@@ -707,6 +729,7 @@ def pg_actualizar():
                 index=ESTADOS_LISTA.index(est_actual) if est_actual in ESTADOS_LISTA else 0)
             nota=st.text_area("Nota de seguimiento * (obligatoria)",
                               placeholder="¿Qué pasó? ¿Cuál es el próximo paso? ¿Quién respondió?...")
+            
 
             # Campos adicionales para etapas de ejecución
             if nuevo_e in ["creacion_contrato","financiacion","obra","novedades_obra","entrega","mantenimiento","cerrado"]:
@@ -744,9 +767,24 @@ def pg_nueva_cotizacion():
         st.markdown("**Datos del edificio**")
         c1,c2=st.columns(2)
         with c1:
-            nombre=st.text_input("Nombre del edificio *",placeholder="Ej: Edificio Altos del Pino")
-            contacto=st.text_input("Contacto *",placeholder="Juan Pérez — Administrador")
-            email=st.text_input("Email de contacto")
+            nombre=st.text_input(
+                "Nombre del edificio *",
+                placeholder="Ej: Edificio Altos del Pino"
+            )
+
+            contacto=st.text_input(
+                "Contacto *",
+                placeholder="Juan Pérez — Administrador"
+            )
+
+            celular=st.text_input(
+                "Celular / WhatsApp",
+                placeholder="Ej: 315 101 7511"
+            )
+
+            email=st.text_input(
+                "Email de contacto"
+            )
         with c2:
             direccion=st.text_input("Dirección")
             drive_url=st.text_input("Link carpeta Drive (opcional)")
@@ -788,7 +826,9 @@ def pg_nueva_cotizacion():
                     "nombre":nombre.upper(),
                     "comercial":u["comercial"],
                     "contacto":contacto,
+                    "celular":celular,
                     "email":email,
+                    "direccion":direccion,
                     "total":fc(valor),
                     "totalNum":valor,
                     "cuota24":fc(c24n),
