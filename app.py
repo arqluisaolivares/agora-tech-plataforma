@@ -230,8 +230,24 @@ h1,h2,h3{font-family:'Sora',sans-serif!important}
 .hist-date{font-size:10px;color:#8BA3BD;margin-bottom:4px;font-weight:700}
 .grupo-tag{font-size:9px;font-weight:700;color:#8BA3BD;text-transform:uppercase;letter-spacing:1.5px;margin:16px 0 6px;display:block}
 div[data-testid="stForm"]{border:none!important;padding:0!important}
-[data-testid="stSidebar"] .stButton>button{background:transparent!important;color:rgba(255,255,255,.6)!important;font-weight:800!important;border:none!important;box-shadow:none!important;border-radius:8px!important;text-align:left!important;font-size:13px!important;transform:none!important}
-[data-testid="stSidebar"] .stButton>button:hover{background:rgba(255,255,255,.08)!important;color:white!important}
+[data-testid="stSidebar"] .stButton>button{
+  background:rgba(255,255,255,.06)!important;
+  color:rgba(255,255,255,.88)!important;
+  font-weight:800!important;
+  border:1px solid rgba(255,255,255,.10)!important;
+  box-shadow:0 1px 6px rgba(0,0,0,.12)!important;
+  border-radius:12px!important;
+  text-align:left!important;
+  font-size:13px!important;
+  transform:none!important;
+  margin-bottom:6px!important;
+  padding:12px 14px!important;
+}
+[data-testid="stSidebar"] .stButton>button:hover{
+  background:rgba(0,200,150,.18)!important;
+  color:white!important;
+  border:1px solid rgba(0,200,150,.35)!important;
+}
 </style>
 """, unsafe_allow_html=True)
 
