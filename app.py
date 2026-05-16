@@ -836,67 +836,68 @@ def pg_actualizar():
                 if not nota.strip():
                     st.error("La nota de seguimiento es obligatoria")
                 else:
-                    # Guardar en historial
-                    agregar_historial(sel, nuevo_e, nota, u["nombre"])
-                    # Campos adicionales
-            
-            extras = {}
+                    extras = {}
 
-            if str(nuevo_contacto).strip():
-                extras["contacto"] = nuevo_contacto
+                    if str(nuevo_contacto).strip():
+                        extras["contacto"] = nuevo_contacto
 
-            if str(nuevo_celular).strip():
-                extras["celular"] = nuevo_celular
+                    if str(nuevo_celular).strip():
+                        extras["celular"] = nuevo_celular
 
-            if str(nueva_direccion).strip():
-                extras["direccion"] = nueva_direccion
+                    if str(nueva_direccion).strip():
+                        extras["direccion"] = nueva_direccion
 
-            if str(nuevo_comercial).strip():
-                extras["comercial"] = nuevo_comercial
+                    if str(nuevo_comercial).strip():
+                        extras["comercial"] = nuevo_comercial
 
-            if int(nuevo_total) > 0:
-                extras["total"] = fc(nuevo_total)
-                extras["totalNum"] = nuevo_total
+                    if int(nuevo_total) > 0:
+                        extras["total"] = fc(nuevo_total)
+                        extras["totalNum"] = nuevo_total
 
-            if int(nueva_cuota24) > 0:
-                extras["cuota24"] = fc(nueva_cuota24)
-                extras["c24Num"] = nueva_cuota24
+                    if int(nueva_cuota24) > 0:
+                        extras["cuota24"] = fc(nueva_cuota24)
+                        extras["c24Num"] = nueva_cuota24
 
-            if int(nueva_cuota36) > 0:
-                extras["cuota36"] = fc(nueva_cuota36)
-                extras["c36Num"] = nueva_cuota36
+                    if int(nueva_cuota36) > 0:
+                        extras["cuota36"] = fc(nueva_cuota36)
+                        extras["c36Num"] = nueva_cuota36
 
-            if contrato:
-                extras["contrato"] = contrato
+                    if contrato:
+                        extras["contrato"] = contrato
 
-            if financiacion:
-                extras["financiacion_info"] = financiacion
+                    if financiacion:
+                        extras["financiacion_info"] = financiacion
 
-            if obra_ini:
-                extras["obra_inicio"] = obra_ini
+                    if obra_ini:
+                        extras["obra_inicio"] = obra_ini
 
-            if obra_fin:
-                extras["obra_fin"] = obra_fin
+                    if obra_fin:
+                        extras["obra_fin"] = obra_fin
 
-            cambios_detectados = detectar_cambios(r, extras)
+                    cambios_detectados = detectar_cambios(r, extras)
 
-            nota_final = nota
+                    nota_final = nota
 
-            if cambios_detectados:
-                nota_final = (
-                    nota
-                    + "\n\nDATOS ACTUALIZADOS: "
-                    + ", ".join(cambios_detectados).upper()
-                )
+                    if cambios_detectados:
+                        nota_final = (
+                            nota
+                            + "\n\nDATOS ACTUALIZADOS: "
+                            + ", ".join(cambios_detectados).upper()
+                        )
 
-            agregar_historial(
-                sel,
-                nuevo_e,
-                nota_final,
-                u["nombre"]
-            )
+                    if extras:
+                        update_proy(sel, extras)
 
-            update_proy(sel, extras)
+                    agregar_historial(
+                        sel,
+                        nuevo_e,
+                        nota_final,
+                        u["nombre"]
+                    )
+
+                    st.success(f"✅ **{sel}** actualizado correctamente")
+                    st.session_state.editing = ""
+                    st.rerun()
             
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
