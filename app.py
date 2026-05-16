@@ -70,14 +70,7 @@ def cargar_proyectos():
                 if "estado" in df.columns:
                     df["estado"] = df["estado"].apply(normalizar_estado_app)
 
-                if "nombre" in df.columns and "historial" in df.columns:
-                    df["_hist_len"] = df["historial"].astype(str).apply(len)
-                    df = df.sort_values("_hist_len", ascending=False)
-                    df = df.drop_duplicates(subset=["nombre"], keep="first")
-                    df = df.drop(columns=["_hist_len"])
-
                 return df.to_dict('records')
-                
         except:
             pass
 
@@ -97,27 +90,48 @@ def cargar_proyectos():
     return []
 
 def guardar_crm(df):
-    """Guarda el CRM completo en Google Sheets sin duplicar filas."""
+    """Versión simple y fuerte - fuerza escribir en Google Sheets"""
     worksheet = get_worksheet()
 
     if worksheet is None:
         st.error("❌ No se pudo conectar a Google Sheets")
+        # fallback local
+        try:
+            base = os.path.dirname(os.path.abspath(__file__))
+            ruta = os.path.join(base, "proyectos.json")
+            df.to_json(ruta, orient="records", force_ascii=False, indent=2)
+            st.toast("💾 Guardado solo en archivo local", icon="📁")
+        except Exception as e:
+            st.error(f"❌ Error local: {e}")
         return
 
+    # Intento directo: agregar solo la nueva fila
     try:
-        df_limpio = df.fillna("")
-
-        worksheet.clear()
-
-        worksheet.update(
-            [df_limpio.columns.values.tolist()] + df_limpio.values.tolist()
-        )
-
-        st.toast("✅ CRM actualizado correctamente en Google Sheets", icon="✅")
-
+        ultima_fila = df.iloc[-1].fillna("").tolist()
+        worksheet.append_row(ultima_fila, value_input_option="RAW")
+        st.toast("✅ Nueva fila creada correctamente en Google Sheets", icon="✅")
+        return
     except Exception as e:
-        st.error(f"❌ Error al guardar en Google Sheets: {str(e)}")
-        
+        st.error(f"❌ Error al agregar fila: {str(e)}")
+
+    # Si falla, intenta reemplazar toda la hoja
+    try:
+        worksheet.clear()
+        worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
+        st.toast("✅ Guardado correctamente en Google Sheets (reemplazo completo)", icon="✅")
+        return
+    except Exception as e2:
+        st.error(f"❌ Error al reemplazar hoja: {str(e2)}")
+
+    # Último recurso: guardar local
+    try:
+        base = os.path.dirname(os.path.abspath(__file__))
+        ruta = os.path.join(base, "proyectos.json")
+        df.to_json(ruta, orient="records", force_ascii=False, indent=2)
+        st.toast("💾 Guardado en archivo local como respaldo", icon="📁")
+    except Exception as e:
+        st.error(f"❌ No se pudo guardar: {e}")
+
 # ══════════════════════════════════════════
 # USUARIOS PERSISTENTES (JSON)
 # ══════════════════════════════════════════
@@ -346,27 +360,6 @@ def update_proy(nombre, campos):
         st.session_state.crm = df
         guardar_crm(st.session_state.crm)   # ← GUARDA EN LA NUBE
 
-def detectar_cambios(r, nuevos):
-    cambios = []
-
-    comparaciones = {
-        "contacto": "contacto",
-        "celular": "celular",
-        "direccion": "dirección",
-        "totalNum": "valor total",
-        "c24Num": "cuota 24 meses",
-        "c36Num": "cuota 36 meses",
-    }
-
-    for campo, etiqueta in comparaciones.items():
-        actual = str(r.get(campo, "") or "").strip()
-        nuevo = str(nuevos.get(campo, "") or "").strip()
-
-        if actual != nuevo:
-            cambios.append(etiqueta)
-
-    return cambios
-    
 def agregar_historial(nombre, estado, nota, usuario):
     """Agrega un evento al historial del proyecto."""
     df = get_crm()
@@ -448,41 +441,6 @@ def pg_dashboard():
         Dashboard · {datetime.now().strftime("%d %B %Y")}
       </div>
     </div>""", unsafe_allow_html=True)
-
-        # KPIs Ejecutivos
-    total_negociado = int(df["totalNum"].fillna(0).sum())
-
-    aprobados = len(
-        df[
-            df["estado"] == "aprobado"
-        ]
-    )
-
-    top_comercial = (
-        df["comercial"]
-        .value_counts()
-        .idxmax()
-        if not df.empty else "—"
-    )
-
-    st.markdown("### KPIs Ejecutivos")
-
-    k1, k2, k3 = st.columns(3)
-
-    k1.metric(
-        "💰 VALOR NEGOCIADO",
-        fc(total_negociado)
-    )
-
-    k2.metric(
-        "✅ APROBADOS",
-        aprobados
-    )
-
-    k3.metric(
-        "👤 TOP COMERCIAL",
-        str(top_comercial).upper()
-    )
 
     # Resumen General
     st.markdown("### Resumen General")
@@ -776,7 +734,6 @@ def pg_actualizar():
             d1, d2 = st.columns(2)
 
             with d1:
-                
                 nuevo_contacto = st.text_input(
                     "Contacto",
                     value=str(r.get("contacto","") or "")
@@ -790,14 +747,6 @@ def pg_actualizar():
                 nueva_direccion = st.text_input(
                     "Dirección",
                     value=str(r.get("direccion","") or "")
-                )
-
-                nuevo_comercial = st.selectbox(
-                    "Comercial responsable",
-                    options=COMS,
-                    index=COMS.index(
-                        str(r.get("comercial","")).upper()
-                    ) if str(r.get("comercial","")).upper() in COMS else 0
                 )
 
             with d2:
@@ -843,69 +792,39 @@ def pg_actualizar():
                 if not nota.strip():
                     st.error("La nota de seguimiento es obligatoria")
                 else:
-                    extras = {}
+                    # Guardar en historial
+                    agregar_historial(sel, nuevo_e, nota, u["nombre"])
+                    # Campos adicionales
+            extras = {
 
-                    if str(nuevo_contacto).strip():
-                        extras["contacto"] = nuevo_contacto
+                "contacto": nuevo_contacto,
+                "celular": nuevo_celular,
+                "direccion": nueva_direccion,
 
-                    if str(nuevo_celular).strip():
-                        extras["celular"] = nuevo_celular
+                "total": fc(nuevo_total),
+                "totalNum": nuevo_total,
 
-                    if str(nueva_direccion).strip():
-                        extras["direccion"] = nueva_direccion
+                "cuota24": fc(nueva_cuota24),
+                "cuota36": fc(nueva_cuota36),
 
-                    if str(nuevo_comercial).strip():
-                        extras["comercial"] = nuevo_comercial
+                "c24Num": nueva_cuota24,
+                "c36Num": nueva_cuota36,
+            }
 
-                    if int(nuevo_total) > 0:
-                        extras["total"] = fc(nuevo_total)
-                        extras["totalNum"] = nuevo_total
+            if contrato:
+                extras["contrato"] = contrato
 
-                    if int(nueva_cuota24) > 0:
-                        extras["cuota24"] = fc(nueva_cuota24)
-                        extras["c24Num"] = nueva_cuota24
+            if financiacion:
+                extras["financiacion_info"] = financiacion
 
-                    if int(nueva_cuota36) > 0:
-                        extras["cuota36"] = fc(nueva_cuota36)
-                        extras["c36Num"] = nueva_cuota36
+            if obra_ini:
+                extras["obra_inicio"] = obra_ini
 
-                    if contrato:
-                        extras["contrato"] = contrato
+            if obra_fin:
+                extras["obra_fin"] = obra_fin
 
-                    if financiacion:
-                        extras["financiacion_info"] = financiacion
+            update_proy(sel, extras)
 
-                    if obra_ini:
-                        extras["obra_inicio"] = obra_ini
-
-                    if obra_fin:
-                        extras["obra_fin"] = obra_fin
-
-                    cambios_detectados = detectar_cambios(r, extras)
-
-                    nota_final = nota
-
-                    if cambios_detectados:
-                        nota_final = (
-                            nota
-                            + "\n\nDATOS ACTUALIZADOS: "
-                            + ", ".join(cambios_detectados).upper()
-                        )
-
-                    if extras:
-                        update_proy(sel, extras)
-
-                    agregar_historial(
-                        sel,
-                        nuevo_e,
-                        nota_final,
-                        u["nombre"]
-                    )
-
-                    st.success(f"✅ **{sel}** actualizado correctamente")
-                    st.session_state.editing = ""
-                    st.rerun()
-            
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
 
@@ -1045,22 +964,11 @@ def pg_edificios():
             est = str(r.get("estado", "lead"))
             drive = str(r.get("drive", "") or "")
             hist_raw = str(r.get("historial", "") or "[]")
-            try:
+            try: 
                 hist = json.loads(hist_raw)
                 n_hist = len(hist)
-
-                if hist:
-                    ultimo = hist[-1]
-                    ultima_fecha = ultimo.get("fecha", "—")
-                    ultimo_usuario = ultimo.get("usuario", "—")
-                else:
-                    ultima_fecha = "—"
-                    ultimo_usuario = "—"
-
-            except:
+            except: 
                 n_hist = 0
-                ultima_fecha = "—"
-                ultimo_usuario = "—"
             drv = f'<a href="{drive}" target="_blank" style="background:#E8F0FE;color:#1A73E8;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;text-decoration:none">📁 Drive</a>' if drive.startswith("http") else ""
 
             # Tarjeta EXACTA como la que tenías antes (la que te gustaba)
@@ -1070,14 +978,9 @@ def pg_edificios():
               <div style='font-family:Sora,sans-serif;font-size:18px;font-weight:800;color:#05875D;margin-bottom:2px'>{total}</div>
               {'<div style="font-size:11px;color:#8BA3BD;margin-bottom:8px">Cuota 36m: '+c36+'/mes</div>' if tn else '<div style="margin-bottom:8px"></div>'}
               <div style="margin-bottom:6px">{badge(est)}</div>
-              <div style="font-size:11px;color:#8BA3BD;margin-bottom:4px">
-                {n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}
-              </div>
-
+              <div style="font-size:11px;color:#8BA3BD">{n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}</div>
             </div>""", unsafe_allow_html=True)
-            
-            st.caption(f"Última actualización: {ultima_fecha} · {ultimo_usuario}")
-            
+
             if st.button("Ver detalle completo →", key=f"detalle_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = r["nombre"]
 
@@ -1104,17 +1007,8 @@ def pg_edificios():
                 c2.metric("Cuota 24m", fc(dinero(r, "c24Num", "cuota24")))
                 c3.metric("Cuota 36m", fc(dinero(r, "c36Num", "cuota36")))
 
-                st.write(f"**CONTACTO:** {str(r.get('contacto','—')).upper()}")
-
-                if r.get("celular"):
-                    st.write(f"**CELULAR / WHATSAPP:** {str(r.get('celular')).upper()}")
-
-                if r.get("email"):
-                    st.write(f"**EMAIL:** {str(r.get('email')).upper()}")
-
-                if r.get("direccion"):
-                    st.write(f"**DIRECCIÓN:** {str(r.get('direccion')).upper()}")
-
+                st.write(f"**Contacto:** {r.get('contacto','—')}")
+                if r.get("email"): st.write(f"**Email:** {r.get('email')}")
                 if r.get("drive"):
                     st.markdown(f"[📁 Abrir carpeta en Drive]({r.get('drive')})")
 
