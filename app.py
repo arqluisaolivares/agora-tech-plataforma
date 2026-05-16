@@ -1074,9 +1074,10 @@ def pg_edificios():
                 {n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}
               </div>
 
-              <div style='font-size:10px;color:#9BB0C7'>Última actualización: {ultima_fecha} · {ultimo_usuario}</div>
             </div>""", unsafe_allow_html=True)
-
+            
+            st.caption(f"Última actualización: {ultima_fecha} · {ultimo_usuario}")
+            
             if st.button("Ver detalle completo →", key=f"detalle_{r.name}", use_container_width=True):
                 st.session_state.edificio_seleccionado = r["nombre"]
 
