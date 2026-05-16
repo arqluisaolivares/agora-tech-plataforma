@@ -66,6 +66,10 @@ def cargar_proyectos():
                 for col in ['totalNum', 'c24Num', 'c36Num']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+
+                if "estado" in df.columns:
+                    df["estado"] = df["estado"].apply(normalizar_estado_app)
+
                 return df.to_dict('records')
         except:
             pass
@@ -191,6 +195,24 @@ ETAPAS = {
     "cerrado":        {"label":"✅ Cerrado",          "grupo":"Posventa",   "color":"#D1FAF0"},
 }
 ESTADOS_LISTA = list(ETAPAS.keys())
+
+def normalizar_estado_app(estado):
+    e = str(estado or "").strip().lower()
+
+    if "aprobado" in e:
+        return "aprobado"
+    if "negocia" in e:
+        return "negociacion"
+    if "cotiz" in e:
+        return "cotizado"
+    if "rechaz" in e or "perdido" in e:
+        return "perdido"
+    if "cerrado" in e:
+        return "cerrado"
+    if "lead" in e:
+        return "lead"
+
+    return e if e in ETAPAS else "lead"
 
 def badge(estado):
     e = ETAPAS.get(estado, {"label":estado,"color":"#F1F5F9"})
@@ -338,6 +360,27 @@ def update_proy(nombre, campos):
         st.session_state.crm = df
         guardar_crm(st.session_state.crm)   # ← GUARDA EN LA NUBE
 
+def detectar_cambios(r, nuevos):
+    cambios = []
+
+    comparaciones = {
+        "contacto": "contacto",
+        "celular": "celular",
+        "direccion": "dirección",
+        "totalNum": "valor total",
+        "c24Num": "cuota 24 meses",
+        "c36Num": "cuota 36 meses",
+    }
+
+    for campo, etiqueta in comparaciones.items():
+        actual = str(r.get(campo, "") or "").strip()
+        nuevo = str(nuevos.get(campo, "") or "").strip()
+
+        if actual != nuevo:
+            cambios.append(etiqueta)
+
+    return cambios
+    
 def agregar_historial(nombre, estado, nota, usuario):
     """Agrega un evento al historial del proyecto."""
     df = get_crm()
@@ -419,6 +462,41 @@ def pg_dashboard():
         Dashboard · {datetime.now().strftime("%d %B %Y")}
       </div>
     </div>""", unsafe_allow_html=True)
+
+        # KPIs Ejecutivos
+    total_negociado = int(df["totalNum"].fillna(0).sum())
+
+    aprobados = len(
+        df[
+            df["estado"] == "aprobado"
+        ]
+    )
+
+    top_comercial = (
+        df["comercial"]
+        .value_counts()
+        .idxmax()
+        if not df.empty else "—"
+    )
+
+    st.markdown("### KPIs Ejecutivos")
+
+    k1, k2, k3 = st.columns(3)
+
+    k1.metric(
+        "💰 VALOR NEGOCIADO",
+        fc(total_negociado)
+    )
+
+    k2.metric(
+        "✅ APROBADOS",
+        aprobados
+    )
+
+    k3.metric(
+        "👤 TOP COMERCIAL",
+        str(top_comercial).upper()
+    )
 
     # Resumen General
     st.markdown("### Resumen General")
@@ -707,6 +785,60 @@ def pg_actualizar():
                 index=ESTADOS_LISTA.index(est_actual) if est_actual in ESTADOS_LISTA else 0)
             nota=st.text_area("Nota de seguimiento * (obligatoria)",
                               placeholder="¿Qué pasó? ¿Cuál es el próximo paso? ¿Quién respondió?...")
+            st.markdown("### ACTUALIZAR DATOS / RECOTIZACIÓN")
+
+            d1, d2 = st.columns(2)
+
+            with d1:
+                
+                nuevo_contacto = st.text_input(
+                    "Contacto",
+                    value=str(r.get("contacto","") or "")
+                )
+
+                nuevo_celular = st.text_input(
+                    "Celular / WhatsApp",
+                    value=str(r.get("celular","") or "")
+                )
+
+                nueva_direccion = st.text_input(
+                    "Dirección",
+                    value=str(r.get("direccion","") or "")
+                )
+
+                nuevo_comercial = st.selectbox(
+                    "Comercial responsable",
+                    options=COMS,
+                    index=COMS.index(
+                        str(r.get("comercial","")).upper()
+                    ) if str(r.get("comercial","")).upper() in COMS else 0
+                )
+
+            with d2:
+                nuevo_total = st.number_input(
+                    "Nuevo valor total ($)",
+                    min_value=0,
+                    value=int(dinero(r, "totalNum", "total")),
+                    step=1000000,
+                    format="%d"
+                )
+
+                nueva_cuota24 = st.number_input(
+                    "Nueva cuota 24 meses ($)",
+                    min_value=0,
+                    value=int(dinero(r, "c24Num", "cuota24")),
+                    step=10000,
+                    format="%d"
+                )
+
+                nueva_cuota36 = st.number_input(
+                    "Nueva cuota 36 meses ($)",
+                    min_value=0,
+                    value=int(dinero(r, "c36Num", "cuota36")),
+                    step=10000,
+                    format="%d"
+                )
+            
 
             # Campos adicionales para etapas de ejecución
             if nuevo_e in ["creacion_contrato","financiacion","obra","novedades_obra","entrega","mantenimiento","cerrado"]:
@@ -728,15 +860,65 @@ def pg_actualizar():
                     # Guardar en historial
                     agregar_historial(sel, nuevo_e, nota, u["nombre"])
                     # Campos adicionales
-                    extras={}
-                    if contrato: extras["contrato"]=contrato
-                    if financiacion: extras["financiacion_info"]=financiacion
-                    if obra_ini: extras["obra_inicio"]=obra_ini
-                    if obra_fin: extras["obra_fin"]=obra_fin
-                    if extras: update_proy(sel,extras)
-                    st.success(f"✅ **{sel}** → {ETAPAS.get(nuevo_e,{'label':nuevo_e})['label']} — guardado en historial")
-                    st.session_state.editing=""; st.rerun()
+            
+            extras = {}
 
+            if str(nuevo_contacto).strip():
+                extras["contacto"] = nuevo_contacto
+
+            if str(nuevo_celular).strip():
+                extras["celular"] = nuevo_celular
+
+            if str(nueva_direccion).strip():
+                extras["direccion"] = nueva_direccion
+
+            if str(nuevo_comercial).strip():
+                extras["comercial"] = nuevo_comercial
+
+            if int(nuevo_total) > 0:
+                extras["total"] = fc(nuevo_total)
+                extras["totalNum"] = nuevo_total
+
+            if int(nueva_cuota24) > 0:
+                extras["cuota24"] = fc(nueva_cuota24)
+                extras["c24Num"] = nueva_cuota24
+
+            if int(nueva_cuota36) > 0:
+                extras["cuota36"] = fc(nueva_cuota36)
+                extras["c36Num"] = nueva_cuota36
+
+            if contrato:
+                extras["contrato"] = contrato
+
+            if financiacion:
+                extras["financiacion_info"] = financiacion
+
+            if obra_ini:
+                extras["obra_inicio"] = obra_ini
+
+            if obra_fin:
+                extras["obra_fin"] = obra_fin
+
+            cambios_detectados = detectar_cambios(r, extras)
+
+            nota_final = nota
+
+            if cambios_detectados:
+                nota_final = (
+                    nota
+                    + "\n\nDATOS ACTUALIZADOS: "
+                    + ", ".join(cambios_detectados).upper()
+                )
+
+            agregar_historial(
+                sel,
+                nuevo_e,
+                nota_final,
+                u["nombre"]
+            )
+
+            update_proy(sel, extras)
+            
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
 
@@ -744,9 +926,24 @@ def pg_nueva_cotizacion():
         st.markdown("**Datos del edificio**")
         c1,c2=st.columns(2)
         with c1:
-            nombre=st.text_input("Nombre del edificio *",placeholder="Ej: Edificio Altos del Pino")
-            contacto=st.text_input("Contacto *",placeholder="Juan Pérez — Administrador")
-            email=st.text_input("Email de contacto")
+            nombre=st.text_input(
+                "Nombre del edificio *",
+                placeholder="Ej: Edificio Altos del Pino"
+            )
+
+            contacto=st.text_input(
+                "Contacto *",
+                placeholder="Juan Pérez — Administrador"
+            )
+
+            celular=st.text_input(
+                "Celular / WhatsApp",
+                placeholder="Ej: 315 101 7511"
+            )
+
+            email=st.text_input(
+                "Email de contacto"
+            )
         with c2:
             direccion=st.text_input("Dirección")
             drive_url=st.text_input("Link carpeta Drive (opcional)")
@@ -788,7 +985,9 @@ def pg_nueva_cotizacion():
                     "nombre":nombre.upper(),
                     "comercial":u["comercial"],
                     "contacto":contacto,
+                    "celular":celular,
                     "email":email,
+                    "direccion":direccion,
                     "total":fc(valor),
                     "totalNum":valor,
                     "cuota24":fc(c24n),
@@ -821,12 +1020,29 @@ def pg_edificios():
         st.info("No hay edificios registrados aún.")
         return
 
-    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+    c1, c2, c3 = st.columns([2, 1, 1])
+
+    with c1:
+        buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
+
+    with c2:
+        estados_disponibles = ["Todos"] + sorted(df["estado"].dropna().astype(str).unique().tolist())
+        filtro_estado = st.selectbox("Estado", estados_disponibles)
+
+    with c3:
+        comerciales_disponibles = ["Todos"] + sorted(df["comercial"].dropna().astype(str).unique().tolist())
+        filtro_comercial = st.selectbox("Comercial", comerciales_disponibles)
 
     dff = df.copy()
+
     if buscar:
         dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False)]
 
+    if filtro_estado != "Todos":
+        dff = dff[dff["estado"].astype(str) == filtro_estado]
+
+    if filtro_comercial != "Todos":
+        dff = dff[dff["comercial"].astype(str) == filtro_comercial]
     col_list, col_detail = st.columns([2, 3])
 
     with col_list:
@@ -842,11 +1058,22 @@ def pg_edificios():
             est = str(r.get("estado", "lead"))
             drive = str(r.get("drive", "") or "")
             hist_raw = str(r.get("historial", "") or "[]")
-            try: 
+            try:
                 hist = json.loads(hist_raw)
                 n_hist = len(hist)
-            except: 
+
+                if hist:
+                    ultimo = hist[-1]
+                    ultima_fecha = ultimo.get("fecha", "—")
+                    ultimo_usuario = ultimo.get("usuario", "—")
+                else:
+                    ultima_fecha = "—"
+                    ultimo_usuario = "—"
+
+            except:
                 n_hist = 0
+                ultima_fecha = "—"
+                ultimo_usuario = "—"
             drv = f'<a href="{drive}" target="_blank" style="background:#E8F0FE;color:#1A73E8;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;text-decoration:none">📁 Drive</a>' if drive.startswith("http") else ""
 
             # Tarjeta EXACTA como la que tenías antes (la que te gustaba)
@@ -856,7 +1083,13 @@ def pg_edificios():
               <div style='font-family:Sora,sans-serif;font-size:18px;font-weight:800;color:#05875D;margin-bottom:2px'>{total}</div>
               {'<div style="font-size:11px;color:#8BA3BD;margin-bottom:8px">Cuota 36m: '+c36+'/mes</div>' if tn else '<div style="margin-bottom:8px"></div>'}
               <div style="margin-bottom:6px">{badge(est)}</div>
-              <div style="font-size:11px;color:#8BA3BD">{n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}</div>
+              <div style="font-size:11px;color:#8BA3BD;margin-bottom:4px">
+                {n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}
+              </div>
+
+              <div style="font-size:10px;color:#9BB0C7">
+                Última actualización: {ultima_fecha} · {ultimo_usuario}
+              </div>
             </div>""", unsafe_allow_html=True)
 
             if st.button("Ver detalle completo →", key=f"detalle_{r.name}", use_container_width=True):
@@ -873,7 +1106,7 @@ def pg_edificios():
             st.markdown(f"""
             <div style="background:#0F172A; color:white; padding:28px; border-radius:16px; margin-bottom:24px;">
                 <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
+                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')}</p>
             </div>
             """, unsafe_allow_html=True)
 
@@ -885,8 +1118,17 @@ def pg_edificios():
                 c2.metric("Cuota 24m", fc(dinero(r, "c24Num", "cuota24")))
                 c3.metric("Cuota 36m", fc(dinero(r, "c36Num", "cuota36")))
 
-                st.write(f"**Contacto:** {r.get('contacto','—')}")
-                if r.get("email"): st.write(f"**Email:** {r.get('email')}")
+                st.write(f"**CONTACTO:** {str(r.get('contacto','—')).upper()}")
+
+                if r.get("celular"):
+                    st.write(f"**CELULAR / WHATSAPP:** {str(r.get('celular')).upper()}")
+
+                if r.get("email"):
+                    st.write(f"**EMAIL:** {str(r.get('email')).upper()}")
+
+                if r.get("direccion"):
+                    st.write(f"**DIRECCIÓN:** {str(r.get('direccion')).upper()}")
+
                 if r.get("drive"):
                     st.markdown(f"[📁 Abrir carpeta en Drive]({r.get('drive')})")
 
