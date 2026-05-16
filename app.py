@@ -90,47 +90,26 @@ def cargar_proyectos():
     return []
 
 def guardar_crm(df):
-    """Versión simple y fuerte - fuerza escribir en Google Sheets"""
+    """Guarda el CRM completo en Google Sheets sin duplicar filas."""
     worksheet = get_worksheet()
 
     if worksheet is None:
         st.error("❌ No se pudo conectar a Google Sheets")
-        # fallback local
-        try:
-            base = os.path.dirname(os.path.abspath(__file__))
-            ruta = os.path.join(base, "proyectos.json")
-            df.to_json(ruta, orient="records", force_ascii=False, indent=2)
-            st.toast("💾 Guardado solo en archivo local", icon="📁")
-        except Exception as e:
-            st.error(f"❌ Error local: {e}")
         return
 
-    # Intento directo: agregar solo la nueva fila
     try:
-        ultima_fila = df.iloc[-1].fillna("").tolist()
-        worksheet.append_row(ultima_fila, value_input_option="RAW")
-        st.toast("✅ Nueva fila creada correctamente en Google Sheets", icon="✅")
-        return
-    except Exception as e:
-        st.error(f"❌ Error al agregar fila: {str(e)}")
+        df_limpio = df.fillna("")
 
-    # Si falla, intenta reemplazar toda la hoja
-    try:
         worksheet.clear()
-        worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
-        st.toast("✅ Guardado correctamente en Google Sheets (reemplazo completo)", icon="✅")
-        return
-    except Exception as e2:
-        st.error(f"❌ Error al reemplazar hoja: {str(e2)}")
 
-    # Último recurso: guardar local
-    try:
-        base = os.path.dirname(os.path.abspath(__file__))
-        ruta = os.path.join(base, "proyectos.json")
-        df.to_json(ruta, orient="records", force_ascii=False, indent=2)
-        st.toast("💾 Guardado en archivo local como respaldo", icon="📁")
+        worksheet.update(
+            [df_limpio.columns.values.tolist()] + df_limpio.values.tolist()
+        )
+
+        st.toast("✅ CRM actualizado correctamente en Google Sheets", icon="✅")
+
     except Exception as e:
-        st.error(f"❌ No se pudo guardar: {e}")
+        st.error(f"❌ Error al guardar en Google Sheets: {str(e)}")
 
 # ══════════════════════════════════════════
 # USUARIOS PERSISTENTES (JSON)
