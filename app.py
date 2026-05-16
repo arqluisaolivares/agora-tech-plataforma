@@ -66,10 +66,6 @@ def cargar_proyectos():
                 for col in ['totalNum', 'c24Num', 'c36Num']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-
-                if "estado" in df.columns:
-                    df["estado"] = df["estado"].apply(normalizar_estado_app)
-
                 return df.to_dict('records')
         except:
             pass
@@ -195,24 +191,6 @@ ETAPAS = {
     "cerrado":        {"label":"✅ Cerrado",          "grupo":"Posventa",   "color":"#D1FAF0"},
 }
 ESTADOS_LISTA = list(ETAPAS.keys())
-
-def normalizar_estado_app(estado):
-    e = str(estado or "").strip().lower()
-
-    if "aprobado" in e:
-        return "aprobado"
-    if "negocia" in e:
-        return "negociacion"
-    if "cotiz" in e:
-        return "cotizado"
-    if "rechaz" in e or "perdido" in e:
-        return "perdido"
-    if "cerrado" in e:
-        return "cerrado"
-    if "lead" in e:
-        return "lead"
-
-    return e if e in ETAPAS else "lead"
 
 def badge(estado):
     e = ETAPAS.get(estado, {"label":estado,"color":"#F1F5F9"})
@@ -729,51 +707,6 @@ def pg_actualizar():
                 index=ESTADOS_LISTA.index(est_actual) if est_actual in ESTADOS_LISTA else 0)
             nota=st.text_area("Nota de seguimiento * (obligatoria)",
                               placeholder="¿Qué pasó? ¿Cuál es el próximo paso? ¿Quién respondió?...")
-            st.markdown("### ACTUALIZAR DATOS / RECOTIZACIÓN")
-
-            d1, d2 = st.columns(2)
-
-            with d1:
-                nuevo_contacto = st.text_input(
-                    "Contacto",
-                    value=str(r.get("contacto","") or "")
-                )
-
-                nuevo_celular = st.text_input(
-                    "Celular / WhatsApp",
-                    value=str(r.get("celular","") or "")
-                )
-
-                nueva_direccion = st.text_input(
-                    "Dirección",
-                    value=str(r.get("direccion","") or "")
-                )
-
-            with d2:
-                nuevo_total = st.number_input(
-                    "Nuevo valor total ($)",
-                    min_value=0,
-                    value=int(dinero(r, "totalNum", "total")),
-                    step=1000000,
-                    format="%d"
-                )
-
-                nueva_cuota24 = st.number_input(
-                    "Nueva cuota 24 meses ($)",
-                    min_value=0,
-                    value=int(dinero(r, "c24Num", "cuota24")),
-                    step=10000,
-                    format="%d"
-                )
-
-                nueva_cuota36 = st.number_input(
-                    "Nueva cuota 36 meses ($)",
-                    min_value=0,
-                    value=int(dinero(r, "c36Num", "cuota36")),
-                    step=10000,
-                    format="%d"
-                )
-            
 
             # Campos adicionales para etapas de ejecución
             if nuevo_e in ["creacion_contrato","financiacion","obra","novedades_obra","entrega","mantenimiento","cerrado"]:
@@ -795,35 +728,14 @@ def pg_actualizar():
                     # Guardar en historial
                     agregar_historial(sel, nuevo_e, nota, u["nombre"])
                     # Campos adicionales
-            extras = {
-
-                "contacto": nuevo_contacto,
-                "celular": nuevo_celular,
-                "direccion": nueva_direccion,
-
-                "total": fc(nuevo_total),
-                "totalNum": nuevo_total,
-
-                "cuota24": fc(nueva_cuota24),
-                "cuota36": fc(nueva_cuota36),
-
-                "c24Num": nueva_cuota24,
-                "c36Num": nueva_cuota36,
-            }
-
-            if contrato:
-                extras["contrato"] = contrato
-
-            if financiacion:
-                extras["financiacion_info"] = financiacion
-
-            if obra_ini:
-                extras["obra_inicio"] = obra_ini
-
-            if obra_fin:
-                extras["obra_fin"] = obra_fin
-
-            update_proy(sel, extras)
+                    extras={}
+                    if contrato: extras["contrato"]=contrato
+                    if financiacion: extras["financiacion_info"]=financiacion
+                    if obra_ini: extras["obra_inicio"]=obra_ini
+                    if obra_fin: extras["obra_fin"]=obra_fin
+                    if extras: update_proy(sel,extras)
+                    st.success(f"✅ **{sel}** → {ETAPAS.get(nuevo_e,{'label':nuevo_e})['label']} — guardado en historial")
+                    st.session_state.editing=""; st.rerun()
 
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
@@ -832,24 +744,9 @@ def pg_nueva_cotizacion():
         st.markdown("**Datos del edificio**")
         c1,c2=st.columns(2)
         with c1:
-            nombre=st.text_input(
-                "Nombre del edificio *",
-                placeholder="Ej: Edificio Altos del Pino"
-            )
-
-            contacto=st.text_input(
-                "Contacto *",
-                placeholder="Juan Pérez — Administrador"
-            )
-
-            celular=st.text_input(
-                "Celular / WhatsApp",
-                placeholder="Ej: 315 101 7511"
-            )
-
-            email=st.text_input(
-                "Email de contacto"
-            )
+            nombre=st.text_input("Nombre del edificio *",placeholder="Ej: Edificio Altos del Pino")
+            contacto=st.text_input("Contacto *",placeholder="Juan Pérez — Administrador")
+            email=st.text_input("Email de contacto")
         with c2:
             direccion=st.text_input("Dirección")
             drive_url=st.text_input("Link carpeta Drive (opcional)")
@@ -891,9 +788,7 @@ def pg_nueva_cotizacion():
                     "nombre":nombre.upper(),
                     "comercial":u["comercial"],
                     "contacto":contacto,
-                    "celular":celular,
                     "email":email,
-                    "direccion":direccion,
                     "total":fc(valor),
                     "totalNum":valor,
                     "cuota24":fc(c24n),
@@ -926,29 +821,12 @@ def pg_edificios():
         st.info("No hay edificios registrados aún.")
         return
 
-    c1, c2, c3 = st.columns([2, 1, 1])
-
-    with c1:
-        buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
-
-    with c2:
-        estados_disponibles = ["Todos"] + sorted(df["estado"].dropna().astype(str).unique().tolist())
-        filtro_estado = st.selectbox("Estado", estados_disponibles)
-
-    with c3:
-        comerciales_disponibles = ["Todos"] + sorted(df["comercial"].dropna().astype(str).unique().tolist())
-        filtro_comercial = st.selectbox("Comercial", comerciales_disponibles)
+    buscar = st.text_input("🔍 Buscar edificio", placeholder="Nombre del edificio...")
 
     dff = df.copy()
-
     if buscar:
         dff = dff[dff["nombre"].str.contains(buscar, case=False, na=False)]
 
-    if filtro_estado != "Todos":
-        dff = dff[dff["estado"].astype(str) == filtro_estado]
-
-    if filtro_comercial != "Todos":
-        dff = dff[dff["comercial"].astype(str) == filtro_comercial]
     col_list, col_detail = st.columns([2, 3])
 
     with col_list:
@@ -995,7 +873,7 @@ def pg_edificios():
             st.markdown(f"""
             <div style="background:#0F172A; color:white; padding:28px; border-radius:16px; margin-bottom:24px;">
                 <h2 style="margin:0; color:white;">{seleccionado}</h2>
-                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')}</p>
+                <p style="margin:12px 0 0 0; opacity:0.9;">{r.get('comercial','—')} • {ETAPAS.get(estado,{}).get('label', estado)}</p>
             </div>
             """, unsafe_allow_html=True)
 
