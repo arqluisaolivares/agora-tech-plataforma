@@ -277,6 +277,9 @@ def ask_ai(q, ctx=""):
     try:
         from groq import Groq
         client = Groq(api_key=key)
+        # Protección anti-error 413 / límite de tokens Groq
+        q = str(q or "")[:3000]
+        ctx = str(ctx or "")[:6000]
         
         full_prompt = f"""Eres el asistente comercial experto de Ágora Tech Colombia.
 
