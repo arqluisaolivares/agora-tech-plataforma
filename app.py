@@ -1046,7 +1046,6 @@ def pg_edificios():
             est = str(r.get("estado", "lead"))
             drive = str(r.get("drive", "") or "")
             hist_raw = str(r.get("historial", "") or "[]")
-            try: 
             try:
                 hist = json.loads(hist_raw)
                 n_hist = len(hist)
