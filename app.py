@@ -90,48 +90,27 @@ def cargar_proyectos():
     return []
 
 def guardar_crm(df):
-    """Versión simple y fuerte - fuerza escribir en Google Sheets"""
+    """Guarda el CRM completo en Google Sheets sin duplicar filas."""
     worksheet = get_worksheet()
 
     if worksheet is None:
         st.error("❌ No se pudo conectar a Google Sheets")
-        # fallback local
-        try:
-            base = os.path.dirname(os.path.abspath(__file__))
-            ruta = os.path.join(base, "proyectos.json")
-            df.to_json(ruta, orient="records", force_ascii=False, indent=2)
-            st.toast("💾 Guardado solo en archivo local", icon="📁")
-        except Exception as e:
-            st.error(f"❌ Error local: {e}")
         return
 
-    # Intento directo: agregar solo la nueva fila
     try:
-        ultima_fila = df.iloc[-1].fillna("").tolist()
-        worksheet.append_row(ultima_fila, value_input_option="RAW")
-        st.toast("✅ Nueva fila creada correctamente en Google Sheets", icon="✅")
-        return
-    except Exception as e:
-        st.error(f"❌ Error al agregar fila: {str(e)}")
+        df_limpio = df.fillna("")
 
-    # Si falla, intenta reemplazar toda la hoja
-    try:
         worksheet.clear()
-        worksheet.update([df.columns.values.tolist()] + df.fillna("").values.tolist())
-        st.toast("✅ Guardado correctamente en Google Sheets (reemplazo completo)", icon="✅")
-        return
-    except Exception as e2:
-        st.error(f"❌ Error al reemplazar hoja: {str(e2)}")
 
-    # Último recurso: guardar local
-    try:
-        base = os.path.dirname(os.path.abspath(__file__))
-        ruta = os.path.join(base, "proyectos.json")
-        df.to_json(ruta, orient="records", force_ascii=False, indent=2)
-        st.toast("💾 Guardado en archivo local como respaldo", icon="📁")
+        worksheet.update(
+            [df_limpio.columns.values.tolist()] + df_limpio.values.tolist()
+        )
+
+        st.toast("✅ CRM actualizado correctamente en Google Sheets", icon="✅")
+
     except Exception as e:
-        st.error(f"❌ No se pudo guardar: {e}")
-
+        st.error(f"❌ Error al guardar en Google Sheets: {str(e)}")
+        
 # ══════════════════════════════════════════
 # USUARIOS PERSISTENTES (JSON)
 # ══════════════════════════════════════════
@@ -857,67 +836,68 @@ def pg_actualizar():
                 if not nota.strip():
                     st.error("La nota de seguimiento es obligatoria")
                 else:
-                    # Guardar en historial
-                    agregar_historial(sel, nuevo_e, nota, u["nombre"])
-                    # Campos adicionales
-            
-            extras = {}
+                    extras = {}
 
-            if str(nuevo_contacto).strip():
-                extras["contacto"] = nuevo_contacto
+                    if str(nuevo_contacto).strip():
+                        extras["contacto"] = nuevo_contacto
 
-            if str(nuevo_celular).strip():
-                extras["celular"] = nuevo_celular
+                    if str(nuevo_celular).strip():
+                        extras["celular"] = nuevo_celular
 
-            if str(nueva_direccion).strip():
-                extras["direccion"] = nueva_direccion
+                    if str(nueva_direccion).strip():
+                        extras["direccion"] = nueva_direccion
 
-            if str(nuevo_comercial).strip():
-                extras["comercial"] = nuevo_comercial
+                    if str(nuevo_comercial).strip():
+                        extras["comercial"] = nuevo_comercial
 
-            if int(nuevo_total) > 0:
-                extras["total"] = fc(nuevo_total)
-                extras["totalNum"] = nuevo_total
+                    if int(nuevo_total) > 0:
+                        extras["total"] = fc(nuevo_total)
+                        extras["totalNum"] = nuevo_total
 
-            if int(nueva_cuota24) > 0:
-                extras["cuota24"] = fc(nueva_cuota24)
-                extras["c24Num"] = nueva_cuota24
+                    if int(nueva_cuota24) > 0:
+                        extras["cuota24"] = fc(nueva_cuota24)
+                        extras["c24Num"] = nueva_cuota24
 
-            if int(nueva_cuota36) > 0:
-                extras["cuota36"] = fc(nueva_cuota36)
-                extras["c36Num"] = nueva_cuota36
+                    if int(nueva_cuota36) > 0:
+                        extras["cuota36"] = fc(nueva_cuota36)
+                        extras["c36Num"] = nueva_cuota36
 
-            if contrato:
-                extras["contrato"] = contrato
+                    if contrato:
+                        extras["contrato"] = contrato
 
-            if financiacion:
-                extras["financiacion_info"] = financiacion
+                    if financiacion:
+                        extras["financiacion_info"] = financiacion
 
-            if obra_ini:
-                extras["obra_inicio"] = obra_ini
+                    if obra_ini:
+                        extras["obra_inicio"] = obra_ini
 
-            if obra_fin:
-                extras["obra_fin"] = obra_fin
+                    if obra_fin:
+                        extras["obra_fin"] = obra_fin
 
-            cambios_detectados = detectar_cambios(r, extras)
+                    cambios_detectados = detectar_cambios(r, extras)
 
-            nota_final = nota
+                    nota_final = nota
 
-            if cambios_detectados:
-                nota_final = (
-                    nota
-                    + "\n\nDATOS ACTUALIZADOS: "
-                    + ", ".join(cambios_detectados).upper()
-                )
+                    if cambios_detectados:
+                        nota_final = (
+                            nota
+                            + "\n\nDATOS ACTUALIZADOS: "
+                            + ", ".join(cambios_detectados).upper()
+                        )
 
-            agregar_historial(
-                sel,
-                nuevo_e,
-                nota_final,
-                u["nombre"]
-            )
+                    if extras:
+                        update_proy(sel, extras)
 
-            update_proy(sel, extras)
+                    agregar_historial(
+                        sel,
+                        nuevo_e,
+                        nota_final,
+                        u["nombre"]
+                    )
+
+                    st.success(f"✅ **{sel}** actualizado correctamente")
+                    st.session_state.editing = ""
+                    st.rerun()
             
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
