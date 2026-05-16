@@ -70,7 +70,14 @@ def cargar_proyectos():
                 if "estado" in df.columns:
                     df["estado"] = df["estado"].apply(normalizar_estado_app)
 
+                if "nombre" in df.columns and "historial" in df.columns:
+                    df["_hist_len"] = df["historial"].astype(str).apply(len)
+                    df = df.sort_values("_hist_len", ascending=False)
+                    df = df.drop_duplicates(subset=["nombre"], keep="first")
+                    df = df.drop(columns=["_hist_len"])
+
                 return df.to_dict('records')
+                
         except:
             pass
 
@@ -1067,9 +1074,7 @@ def pg_edificios():
                 {n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}
               </div>
 
-              <div style="font-size:10px;color:#9BB0C7">
-                Última actualización: {ultima_fecha} · {ultimo_usuario}
-              </div>
+              <div style='font-size:10px;color:#9BB0C7'>Última actualización: {ultima_fecha} · {ultimo_usuario}</div>
             </div>""", unsafe_allow_html=True)
 
             if st.button("Ver detalle completo →", key=f"detalle_{r.name}", use_container_width=True):
