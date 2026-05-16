@@ -790,26 +790,29 @@ def pg_actualizar():
             d1, d2 = st.columns(2)
 
             with d1:
-            nuevo_contacto = st.text_input(
-                "Contacto",
-                value=str(r.get("contacto","") or "")
-            )
+                
+                nuevo_contacto = st.text_input(
+                    "Contacto",
+                    value=str(r.get("contacto","") or "")
+                )
 
-            nuevo_celular = st.text_input(
-                "Celular / WhatsApp",
-                value=str(r.get("celular","") or "")
-            )
+                nuevo_celular = st.text_input(
+                    "Celular / WhatsApp",
+                    value=str(r.get("celular","") or "")
+                )
 
-            nueva_direccion = st.text_input(
-                "Dirección",
-                value=str(r.get("direccion","") or "")
-            )
+                nueva_direccion = st.text_input(
+                    "Dirección",
+                    value=str(r.get("direccion","") or "")
+                )
 
-            nuevo_comercial = st.selectbox(
-                "Comercial responsable",
-                options=COMS,
-                index=COMS.index(str(r.get("comercial","")).upper()) if str(r.get("comercial","")).upper() in COMS else 0
-            )
+                nuevo_comercial = st.selectbox(
+                    "Comercial responsable",
+                    options=COMS,
+                    index=COMS.index(
+                        str(r.get("comercial","")).upper()
+                    ) if str(r.get("comercial","")).upper() in COMS else 0
+                )
 
             with d2:
                 nuevo_total = st.number_input(
