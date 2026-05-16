@@ -360,6 +360,27 @@ def update_proy(nombre, campos):
         st.session_state.crm = df
         guardar_crm(st.session_state.crm)   # ← GUARDA EN LA NUBE
 
+def detectar_cambios(r, nuevos):
+    cambios = []
+
+    comparaciones = {
+        "contacto": "contacto",
+        "celular": "celular",
+        "direccion": "dirección",
+        "totalNum": "valor total",
+        "c24Num": "cuota 24 meses",
+        "c36Num": "cuota 36 meses",
+    }
+
+    for campo, etiqueta in comparaciones.items():
+        actual = str(r.get(campo, "") or "").strip()
+        nuevo = str(nuevos.get(campo, "") or "").strip()
+
+        if actual != nuevo:
+            cambios.append(etiqueta)
+
+    return cambios
+    
 def agregar_historial(nombre, estado, nota, usuario):
     """Agrega un evento al historial del proyecto."""
     df = get_crm()
@@ -441,6 +462,41 @@ def pg_dashboard():
         Dashboard · {datetime.now().strftime("%d %B %Y")}
       </div>
     </div>""", unsafe_allow_html=True)
+
+        # KPIs Ejecutivos
+    total_negociado = int(df["totalNum"].fillna(0).sum())
+
+    aprobados = len(
+        df[
+            df["estado"] == "aprobado"
+        ]
+    )
+
+    top_comercial = (
+        df["comercial"]
+        .value_counts()
+        .idxmax()
+        if not df.empty else "—"
+    )
+
+    st.markdown("### KPIs Ejecutivos")
+
+    k1, k2, k3 = st.columns(3)
+
+    k1.metric(
+        "💰 VALOR NEGOCIADO",
+        fc(total_negociado)
+    )
+
+    k2.metric(
+        "✅ APROBADOS",
+        aprobados
+    )
+
+    k3.metric(
+        "👤 TOP COMERCIAL",
+        str(top_comercial).upper()
+    )
 
     # Resumen General
     st.markdown("### Resumen General")
@@ -795,21 +851,29 @@ def pg_actualizar():
                     # Guardar en historial
                     agregar_historial(sel, nuevo_e, nota, u["nombre"])
                     # Campos adicionales
-            extras = {
+            
+            extras = {}
 
-                "contacto": nuevo_contacto,
-                "celular": nuevo_celular,
-                "direccion": nueva_direccion,
+            if str(nuevo_contacto).strip():
+                extras["contacto"] = nuevo_contacto
 
-                "total": fc(nuevo_total),
-                "totalNum": nuevo_total,
+            if str(nuevo_celular).strip():
+                extras["celular"] = nuevo_celular
 
-                "cuota24": fc(nueva_cuota24),
-                "cuota36": fc(nueva_cuota36),
+            if str(nueva_direccion).strip():
+                extras["direccion"] = nueva_direccion
 
-                "c24Num": nueva_cuota24,
-                "c36Num": nueva_cuota36,
-            }
+            if int(nuevo_total) > 0:
+                extras["total"] = fc(nuevo_total)
+                extras["totalNum"] = nuevo_total
+
+            if int(nueva_cuota24) > 0:
+                extras["cuota24"] = fc(nueva_cuota24)
+                extras["c24Num"] = nueva_cuota24
+
+            if int(nueva_cuota36) > 0:
+                extras["cuota36"] = fc(nueva_cuota36)
+                extras["c36Num"] = nueva_cuota36
 
             if contrato:
                 extras["contrato"] = contrato
@@ -823,8 +887,26 @@ def pg_actualizar():
             if obra_fin:
                 extras["obra_fin"] = obra_fin
 
-            update_proy(sel, extras)
+            cambios_detectados = detectar_cambios(r, extras)
 
+            nota_final = nota
+
+            if cambios_detectados:
+                nota_final = (
+                    nota
+                    + "\n\nDATOS ACTUALIZADOS: "
+                    + ", ".join(cambios_detectados).upper()
+                )
+
+            agregar_historial(
+                sel,
+                nuevo_e,
+                nota_final,
+                u["nombre"]
+            )
+
+            update_proy(sel, extras)
+            
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
 
@@ -965,10 +1047,22 @@ def pg_edificios():
             drive = str(r.get("drive", "") or "")
             hist_raw = str(r.get("historial", "") or "[]")
             try: 
+            try:
                 hist = json.loads(hist_raw)
                 n_hist = len(hist)
-            except: 
+
+                if hist:
+                    ultimo = hist[-1]
+                    ultima_fecha = ultimo.get("fecha", "—")
+                    ultimo_usuario = ultimo.get("usuario", "—")
+                else:
+                    ultima_fecha = "—"
+                    ultimo_usuario = "—"
+
+            except:
                 n_hist = 0
+                ultima_fecha = "—"
+                ultimo_usuario = "—"
             drv = f'<a href="{drive}" target="_blank" style="background:#E8F0FE;color:#1A73E8;border-radius:6px;padding:2px 8px;font-size:10px;font-weight:700;text-decoration:none">📁 Drive</a>' if drive.startswith("http") else ""
 
             # Tarjeta EXACTA como la que tenías antes (la que te gustaba)
@@ -978,7 +1072,13 @@ def pg_edificios():
               <div style='font-family:Sora,sans-serif;font-size:18px;font-weight:800;color:#05875D;margin-bottom:2px'>{total}</div>
               {'<div style="font-size:11px;color:#8BA3BD;margin-bottom:8px">Cuota 36m: '+c36+'/mes</div>' if tn else '<div style="margin-bottom:8px"></div>'}
               <div style="margin-bottom:6px">{badge(est)}</div>
-              <div style="font-size:11px;color:#8BA3BD">{n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}</div>
+              <div style="font-size:11px;color:#8BA3BD;margin-bottom:4px">
+                {n_hist} entradas en historial · {"📊 Encuesta ✓" if r.get("encuesta") else "Sin encuesta"} {drv}
+              </div>
+
+              <div style="font-size:10px;color:#9BB0C7">
+                Última actualización: {ultima_fecha} · {ultimo_usuario}
+              </div>
             </div>""", unsafe_allow_html=True)
 
             if st.button("Ver detalle completo →", key=f"detalle_{r.name}", use_container_width=True):
@@ -1007,8 +1107,17 @@ def pg_edificios():
                 c2.metric("Cuota 24m", fc(dinero(r, "c24Num", "cuota24")))
                 c3.metric("Cuota 36m", fc(dinero(r, "c36Num", "cuota36")))
 
-                st.write(f"**Contacto:** {r.get('contacto','—')}")
-                if r.get("email"): st.write(f"**Email:** {r.get('email')}")
+                st.write(f"**CONTACTO:** {str(r.get('contacto','—')).upper()}")
+
+                if r.get("celular"):
+                    st.write(f"**CELULAR / WHATSAPP:** {str(r.get('celular')).upper()}")
+
+                if r.get("email"):
+                    st.write(f"**EMAIL:** {str(r.get('email')).upper()}")
+
+                if r.get("direccion"):
+                    st.write(f"**DIRECCIÓN:** {str(r.get('direccion')).upper()}")
+
                 if r.get("drive"):
                     st.markdown(f"[📁 Abrir carpeta en Drive]({r.get('drive')})")
 
