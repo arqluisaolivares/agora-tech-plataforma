@@ -609,6 +609,10 @@ def ask_ai(q, ctx=""):
         from groq import Groq
         client = Groq(api_key=key)
         
+        # PROTECCIÓN URGENTE CONTRA ERROR 413 / TOKENS
+        q = str(q or "")[:1200]
+        ctx = str(ctx or "")[:2500]
+        
         full_context = f"""CONTEXTO COMPLETO DEL CRM (usa esta información siempre):
 {ctx if ctx else "Sin datos de proyectos disponibles."}
 
@@ -1237,7 +1241,27 @@ def pg_asistente():
     hdr("🤖","Asistente Comercial IA","Consultas estratégicas — pipeline, cierres, objeciones")
     if not ai_activa():
         st.markdown('<div class="al-r">⚠️ <b>IA no configurada.</b> Ve a ⚙️ Configuración.</div>',unsafe_allow_html=True); return
-    df=mis_proyectos(); ctx=df.to_string(max_rows=84) if not df.empty else ""
+    df = mis_proyectos()
+
+    cols_ia = [
+        "nombre",
+        "comercial",
+        "estado",
+        "total",
+        "lastUpdate",
+        "lastNote"
+    ]
+
+    cols_ia = [c for c in cols_ia if c in df.columns]
+
+    if not df.empty:
+        ctx = (
+            df[cols_ia]
+            .tail(15)
+            .to_string(index=False)
+        )
+    else:
+        ctx = ""
     for msg in st.session_state.messages:
         cls="chat-u" if msg["role"]=="user" else "chat-a"
         pre="👤 " if msg["role"]=="user" else "🤖 "
