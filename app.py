@@ -176,19 +176,37 @@ ETAPAS = {
 ESTADOS_LISTA = list(ETAPAS.keys())
 
 def normalizar_estado_app(estado):
+    """
+    Mapeo CORRECTO según Drive actualizado junio 2026:
+    - "Aprobado Aut - Pendiente vencimiento vigilancia" = Stand-by → nuevo
+    - "Aprobado - Pendiente proveedor" = Conversando → cotizado  
+    - "En proceso / Conversando" → cotizado
+    - "Stand-by / retomar después" → nuevo
+    - "Rechazadas / Perdido" → perdido
+    NINGÚN proyecto está realmente "aprobado" para contratar.
+    """
     e = str(estado or "").strip().lower()
 
-    if "aprobado" in e:
-        return "aprobado"
-    if "negocia" in e:
-        return "negociacion"
-    if "cotiz" in e:
+    # Stand-by: aprobado pero esperando vencimiento de vigilancia
+    if "vencimiento" in e or ("aprobado" in e and "aut" in e):
+        return "nuevo"
+    # Conversando activo: "Aprobado - Pendiente proveedor" o similar
+    if "aprobado" in e and "pendiente" in e:
         return "cotizado"
+    # Cualquier otro "aprobado" viejo → cotizado (conversando)
+    if "aprobado" in e:
+        return "cotizado"
+    if "negocia" in e or "avanzado" in e or "cierre" in e:
+        return "negociacion"
+    if "cotiz" in e or "conversando" in e or "proceso" in e or "pendiente" in e or "viabilidad" in e:
+        return "cotizado"
+    if "stand" in e or "retomar" in e or "suspendid" in e:
+        return "nuevo"
     if "rechaz" in e or "perdido" in e:
         return "perdido"
     if "cerrado" in e:
         return "cerrado"
-    if "lead" in e:
+    if "lead" in e or "frio" in e or "frío" in e:
         return "lead"
 
     return e if e in ETAPAS else "lead"
