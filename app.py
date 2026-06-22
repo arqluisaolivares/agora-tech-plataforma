@@ -514,20 +514,102 @@ def pg_dashboard():
         st.caption(f"**Total de edificios en el sistema:** {len(df)}")
 
 
-    # Alertas por Comercial
+    # Alertas por Comercial — AUTOMÁTICAS Y DINÁMICAS
     st.markdown("### 🚨 Alertas por Comercial")
+    hace_7_dias = (datetime.now() - timedelta(days=7)).isoformat()
+
     if es_g:
-        for com in sorted(df["comercial"].unique()):
-            proy_com = df[df["comercial"] == com]
-            alertas = proy_com[proy_com["estado"].isin(["cotizado", "negociacion", "aprobado"])]
-            with st.expander(f"**{com}** — {len(proy_com)} proyectos", expanded=True):
-                if len(alertas) > 0:
-                    for _, r in alertas.head(3).iterrows():
-                        st.markdown(f'<div class="al-y">⚡ <strong>{r["nombre"]}</strong> — {ETAPAS.get(r["estado"],{}).get("label","")}</div>', unsafe_allow_html=True)
-                else:
-                    st.markdown('<div class="al-g">✅ Sin alertas pendientes</div>', unsafe_allow_html=True)
+        for com in sorted(df["comercial"].dropna().unique()):
+            proy_com  = df[df["comercial"] == com]
+            en_neg    = proy_com[proy_com["estado"] == "negociacion"]
+            apro_com  = proy_com[proy_com["estado"] == "aprobado"]
+            sin_upd   = proy_com[
+                (proy_com["lastUpdate"].astype(str).str.strip() == "") |
+                (proy_com["lastUpdate"].astype(str).str.strip() < hace_7_dias)
+            ]
+            hot_com   = proy_com[
+                (proy_com["estado"] == "cotizado") &
+                (proy_com["totalNum"] > 80_000_000)
+            ].sort_values("totalNum", ascending=False)
+
+            total_alertas = len(en_neg) + len(apro_com) + (1 if len(sin_upd) > 0 else 0)
+            icono = "🔴" if len(en_neg) > 0 else ("🟡" if total_alertas > 0 else "🟢")
+
+            with st.expander(f"{icono} **{com}** — {len(proy_com)} proyectos · {total_alertas} alertas", expanded=(total_alertas > 0)):
+
+                for _, r in en_neg.iterrows():
+                    nota = str(r.get("lastNote","") or r.get("notas","") or "Sin nota reciente")[:120]
+                    upd  = str(r.get("lastUpdate",""))[:10] or "Nunca"
+                    st.markdown(f"""<div style="background:#FEF2F2;border-left:4px solid #E84040;padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:6px">
+                        <div style="font-size:12px;font-weight:700;color:#991B1B">🔥 NEGOCIACIÓN: {r["nombre"]}</div>
+                        <div style="font-size:11.5px;color:#04111E;margin-top:3px">{nota}</div>
+                        <div style="font-size:10px;color:#8BA3BD;margin-top:3px">Últ. actualización: {upd} · {fc(int(r.get("totalNum",0) or 0))}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                for _, r in apro_com.iterrows():
+                    nota = str(r.get("lastNote","") or r.get("notas","") or "Avanzar a contrato")[:120]
+                    upd  = str(r.get("lastUpdate",""))[:10] or "Nunca"
+                    st.markdown(f"""<div style="background:#EDE9FE;border-left:4px solid #8B5CF6;padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:6px">
+                        <div style="font-size:12px;font-weight:700;color:#5B21B6">🟣 APROBADO SIN CONTRATO: {r["nombre"]}</div>
+                        <div style="font-size:11.5px;color:#04111E;margin-top:3px">{nota}</div>
+                        <div style="font-size:10px;color:#8BA3BD;margin-top:3px">Últ. actualización: {upd} · {fc(int(r.get("totalNum",0) or 0))}</div>
+                    </div>""", unsafe_allow_html=True)
+
+                for _, r in hot_com.head(3).iterrows():
+                    if r["nombre"] not in list(en_neg["nombre"]) + list(apro_com["nombre"]):
+                        nota = str(r.get("lastNote","") or r.get("notas","") or "Dar seguimiento")[:120]
+                        upd  = str(r.get("lastUpdate",""))[:10] or "Nunca"
+                        st.markdown(f"""<div style="background:#FFFBEB;border-left:4px solid #D97706;padding:10px 14px;border-radius:0 8px 8px 0;margin-bottom:6px">
+                            <div style="font-size:12px;font-weight:700;color:#92400E">💰 OPORTUNIDAD: {r["nombre"]}</div>
+                            <div style="font-size:11.5px;color:#04111E;margin-top:3px">{nota}</div>
+                            <div style="font-size:10px;color:#8BA3BD;margin-top:3px">Últ. actualización: {upd} · {fc(int(r["totalNum"]))}</div>
+                        </div>""", unsafe_allow_html=True)
+
+                if len(sin_upd) > 0:
+                    nombres = ", ".join(sin_upd["nombre"].head(4).tolist())
+                    st.markdown(f'<div class="al-b" style="font-size:12px">📋 <b>{len(sin_upd)} sin actualizar (+7 días):</b> {nombres}{"..." if len(sin_upd)>4 else ""}</div>', unsafe_allow_html=True)
+
+                if total_alertas == 0 and hot_com.empty:
+                    st.markdown('<div class="al-g">✅ Al día — sin alertas críticas</div>', unsafe_allow_html=True)
+
     else:
-        st.markdown('<div class="al-y">⚡ Revisa tus proyectos pendientes</div>', unsafe_allow_html=True)
+        # Vista comercial — alertas específicas de sus propios proyectos
+        mis_neg   = df[df["estado"] == "negociacion"]
+        mis_aprob = df[df["estado"] == "aprobado"]
+        mis_hot   = df[(df["estado"]=="cotizado") & (df["totalNum"]>80_000_000)].sort_values("totalNum", ascending=False)
+        mis_sin   = df[
+            (df["lastUpdate"].astype(str).str.strip() == "") |
+            (df["lastUpdate"].astype(str).str.strip() < hace_7_dias)
+        ]
+
+        for _, r in mis_neg.iterrows():
+            nota = str(r.get("lastNote","") or r.get("notas","") or "Dar seguimiento urgente")[:150]
+            st.markdown(f"""<div style="background:#FEF2F2;border-left:4px solid #E84040;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:8px">
+                <div style="font-size:13px;font-weight:700;color:#991B1B">🔥 NEGOCIACIÓN: {r["nombre"]}</div>
+                <div style="font-size:12px;color:#04111E;margin-top:4px">{nota}</div>
+                <div style="font-size:10px;color:#8BA3BD;margin-top:3px">Valor: {fc(int(r.get("totalNum",0) or 0))}</div>
+            </div>""", unsafe_allow_html=True)
+
+        for _, r in mis_aprob.iterrows():
+            nota = str(r.get("lastNote","") or r.get("notas","") or "Avanzar a contrato")[:150]
+            st.markdown(f"""<div style="background:#EDE9FE;border-left:4px solid #8B5CF6;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:8px">
+                <div style="font-size:13px;font-weight:700;color:#5B21B6">🟣 APROBADO: {r["nombre"]}</div>
+                <div style="font-size:12px;color:#04111E;margin-top:4px">{nota}</div>
+                <div style="font-size:10px;color:#8BA3BD;margin-top:3px">Valor: {fc(int(r.get("totalNum",0) or 0))}</div>
+            </div>""", unsafe_allow_html=True)
+
+        for _, r in mis_hot.head(3).iterrows():
+            nota = str(r.get("lastNote","") or r.get("notas","") or "Dar seguimiento activo")[:150]
+            st.markdown(f"""<div style="background:#FFFBEB;border-left:4px solid #D97706;padding:12px 16px;border-radius:0 8px 8px 0;margin-bottom:8px">
+                <div style="font-size:13px;font-weight:700;color:#92400E">💰 {r["nombre"]} — {fc(int(r["totalNum"]))}</div>
+                <div style="font-size:12px;color:#04111E;margin-top:4px">{nota}</div>
+            </div>""", unsafe_allow_html=True)
+
+        if len(mis_sin) > 0:
+            st.markdown(f'<div class="al-b">📋 <b>{len(mis_sin)} proyectos sin actualizar en +7 días.</b> Ve a "Actualizar Estado".</div>', unsafe_allow_html=True)
+
+        if len(mis_neg)==0 and len(mis_aprob)==0 and len(mis_hot)==0 and len(mis_sin)==0:
+            st.markdown('<div class="al-g">✅ Todo al día — sin alertas pendientes.</div>', unsafe_allow_html=True)
 
     # Top 5 urgentes
     st.markdown("### 🔥 Proyectos que necesitan atención inmediata")
