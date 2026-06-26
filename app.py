@@ -1,227 +1,145 @@
 """
-ÁGORA TECH — Plataforma Comercial v7
-Dashboard interactivo · Novedades en tiempo real · Pagos · Informes socios
+ÁGORA TECH — Plataforma Comercial v8
+VINCULADA AL GOOGLE SHEET EN TIEMPO REAL
+Sheet ID: 1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE
+Lee directamente del Sheet vía URL pública (sin service account).
+Los cambios se guardan en session_state + proyectos.json como respaldo.
 """
 
 import streamlit as st
-from groq import Groq
 import pandas as pd
 import json, os
 from datetime import datetime, timedelta
+from groq import Groq
 import plotly.express as px
-import plotly.graph_objects as go
+import urllib.request, io
+import streamlit.components.v1
 
-# ══════════════════════════════════════════════════════════════
-# CONSTANTES
-# ══════════════════════════════════════════════════════════════
-VERSION   = "v7 · Jun 2026"
+# ══════════════════════════════════════════
+# CONFIGURACIÓN
+# ══════════════════════════════════════════
+VERSION    = "v8 · Jun 2026"
 GROQ_MODEL = "llama-3.3-70b-versatile"
+SHEET_ID   = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
+SHEET_URL  = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 
 ETAPAS = {
-    "lead":              {"label":"Lead nuevo",           "grupo":"Comercial", "color":"#DBEAFE", "dot":"#3B82F6"},
-    "cotizado":          {"label":"Cotización enviada",   "grupo":"Comercial", "color":"#FEF9C3", "dot":"#F59E0B"},
-    "negociacion":       {"label":"Negociando",           "grupo":"Comercial", "color":"#FED7AA", "dot":"#F97316"},
-    "aprobado_espera":   {"label":"Aprobado–Stand-by",    "grupo":"Comercial", "color":"#E0F2FE", "dot":"#0EA5E9"},
-    "perdido":           {"label":"Perdido",              "grupo":"Comercial", "color":"#FEE2E2", "dot":"#EF4444"},
-    "creacion_contrato": {"label":"Creación Contrato",    "grupo":"Ejecución", "color":"#D1FAF0", "dot":"#10B981"},
-    "financiacion":      {"label":"Financiación",         "grupo":"Ejecución", "color":"#D1FAF0", "dot":"#10B981"},
-    "obra":              {"label":"En Obra",               "grupo":"Ejecución", "color":"#ECFDF5", "dot":"#059669"},
-    "novedades_obra":    {"label":"Novedades Obra",        "grupo":"Ejecución", "color":"#FFFBEB", "dot":"#D97706"},
-    "entrega":           {"label":"Entrega",               "grupo":"Ejecución", "color":"#ECFDF5", "dot":"#059669"},
-    "mantenimiento":     {"label":"Mantenimiento",         "grupo":"Posventa",  "color":"#EFF6FF", "dot":"#6366F1"},
-    "cerrado":           {"label":"Cerrado",               "grupo":"Posventa",  "color":"#D1FAF0", "dot":"#059669"},
+    "lead":              {"label":"Lead nuevo",              "color":"#DBEAFE","dot":"#3B82F6","grupo":"Comercial"},
+    "cotizado":          {"label":"Contacto frío",           "color":"#FEF9C3","dot":"#F59E0B","grupo":"Comercial"},
+    "evaluacion_consejo":{"label":"En evaluación / Consejo", "color":"#FDE68A","dot":"#D97706","grupo":"Comercial"},
+    "negociacion":       {"label":"Negociando",              "color":"#FED7AA","dot":"#F97316","grupo":"Comercial"},
+    "aprobado_espera":   {"label":"Aprobado–Stand-by Vig.",  "color":"#E0F2FE","dot":"#0EA5E9","grupo":"Comercial"},
+    "perdido":           {"label":"Perdido",                 "color":"#FEE2E2","dot":"#EF4444","grupo":"Comercial"},
+    "creacion_contrato": {"label":"Creación Contrato",       "color":"#D1FAF0","dot":"#10B981","grupo":"Ejecución"},
+    "financiacion":      {"label":"Financiación",            "color":"#D1FAF0","dot":"#10B981","grupo":"Ejecución"},
+    "obra":              {"label":"En Obra",                 "color":"#ECFDF5","dot":"#059669","grupo":"Ejecución"},
+    "novedades_obra":    {"label":"Novedades Obra",          "color":"#FFFBEB","dot":"#D97706","grupo":"Ejecución"},
+    "entrega":           {"label":"Entrega",                 "color":"#ECFDF5","dot":"#059669","grupo":"Ejecución"},
+    "mantenimiento":     {"label":"Mantenimiento",           "color":"#EFF6FF","dot":"#6366F1","grupo":"Posventa"},
+    "cerrado":           {"label":"✅ Cerrado",               "color":"#D1FAF0","dot":"#059669","grupo":"Posventa"},
 }
 ESTADOS_LISTA = list(ETAPAS.keys())
 COMS = ["RAFAEL TORRES","SONIA CASTRO","LINA CALLE","ALBERTO FERRER","SANTIAGO BOHORQUEZ","LUISA OLIVARES"]
 
-AI_SYSTEM = """Eres el asesor estratégico de Ágora Tech Colombia — automatización de accesos para copropiedades.
-PRODUCTO: SALTO HomeLok. Financiación 100% 24/36 meses sin intereses. 40 días instalación.
-SITUACIÓN: 127 propuestas, $8.6B pipeline, 0 contratos. Cierres probables jul-sep 2026.
-Responde en español colombiano. Directo y accionable."""
+AI_SYSTEM = """Eres el asesor estratégico de Ágora Tech Colombia — automatización de accesos para copropiedades residenciales con sistema SALTO HomeLok. Financiación 100% a 24/36 meses sin intereses. Instalación en 40 días. 140 propuestas activas, $4.2B pipeline, 0 contratos cerrados a jun 2026. Responde en español colombiano. Sé directo y accionable."""
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # STREAMLIT CONFIG
-# ══════════════════════════════════════════════════════════════
-st.set_page_config(page_title="Ágora Tech", page_icon="🔐", layout="wide", initial_sidebar_state="expanded")
+# ══════════════════════════════════════════
+st.set_page_config(page_title="Ágora Tech CRM", page_icon="🔐", layout="wide", initial_sidebar_state="expanded")
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+st.markdown("""<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+:root{--bg:#F1F5F9;--s:#fff;--s2:#F8FAFC;--border:#E2E8F0;--b2:#CBD5E1;
+  --ink:#0F172A;--ink2:#334155;--ink3:#64748B;--ink4:#94A3B8;
+  --blue:#2563EB;--blu-lt:#EFF6FF;--teal:#0D9488;--green:#059669;--g-lt:#ECFDF5;
+  --red:#DC2626;--r-lt:#FEF2F2;--amber:#D97706;--a-lt:#FFFBEB;
+  --sh:0 1px 3px rgba(15,23,42,.08);--sh2:0 4px 16px rgba(15,23,42,.1);--r:12px;--r2:8px;}
+html,body,[class*="css"]{font-family:'Inter',sans-serif!important;background:var(--bg)!important}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif!important}
 
-:root{
-  --bg:#F1F5F9; --surface:#fff; --s2:#F8FAFC; --s3:#F1F5F9;
-  --border:#E2E8F0; --b2:#CBD5E1;
-  --ink:#0F172A; --ink2:#334155; --ink3:#64748B; --ink4:#94A3B8;
-  --blue:#2563EB; --blue-lt:#EFF6FF; --blue-dk:#1D4ED8;
-  --teal:#0D9488; --green:#059669; --green-lt:#ECFDF5;
-  --red:#DC2626; --red-lt:#FEF2F2;
-  --amber:#D97706; --amber-lt:#FFFBEB;
-  --purple:#7C3AED; --purple-lt:#F5F3FF;
-  --sh:0 1px 3px rgba(15,23,42,.08),0 1px 2px rgba(15,23,42,.05);
-  --sh2:0 4px 16px rgba(15,23,42,.1);
-  --r:12px; --r2:8px;
-}
-
-*{box-sizing:border-box}
-html,body,[class*="css"]{font-family:'Inter',sans-serif!important;background:var(--bg)!important;color:var(--ink)!important}
-h1,h2,h3,.sg{font-family:'Space Grotesk',sans-serif!important}
-
-/* ── SIDEBAR premium ── */
-[data-testid="stSidebar"]{
-  background:linear-gradient(180deg,#0F172A 0%,#1E293B 100%)!important;
-  border-right:1px solid rgba(255,255,255,.05)!important;
-  width:220px!important;
-}
-[data-testid="stSidebar"] section{padding:0!important}
+/* SIDEBAR */
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#0F172A,#1E293B)!important;border-right:1px solid rgba(255,255,255,.04)!important}
 [data-testid="stSidebar"] *{color:rgba(255,255,255,.7)!important}
 [data-testid="stSidebar"] .stButton>button{
-  background:transparent!important;color:rgba(255,255,255,.6)!important;
-  border:none!important;box-shadow:none!important;border-radius:var(--r2)!important;
-  text-align:left!important;font-size:12.5px!important;font-weight:500!important;
-  padding:9px 12px!important;width:100%!important;margin:1px 0!important;
-  transition:all .15s!important;letter-spacing:0!important;
-}
-[data-testid="stSidebar"] .stButton>button:hover{
-  background:rgba(255,255,255,.07)!important;color:white!important;transform:none!important;
-}
+  background:transparent!important;color:rgba(255,255,255,.65)!important;border:none!important;
+  box-shadow:none!important;border-radius:7px!important;text-align:left!important;
+  font-size:12.5px!important;font-weight:500!important;padding:8px 12px!important;
+  width:100%!important;margin:1px 0!important;transition:all .15s!important;transform:none!important}
+[data-testid="stSidebar"] .stButton>button:hover{background:rgba(255,255,255,.08)!important;color:white!important}
 
-/* ── BOTONES principales ── */
-.stButton>button{
-  background:linear-gradient(135deg,#2563EB,#0D9488)!important;color:white!important;
-  font-family:'Space Grotesk',sans-serif!important;font-weight:600!important;
-  border:none!important;border-radius:var(--r2)!important;letter-spacing:-.1px!important;
-  transition:all .18s!important;box-shadow:0 2px 8px rgba(37,99,235,.3)!important;
-}
-.stButton>button:hover{transform:translateY(-1px)!important;box-shadow:0 5px 18px rgba(37,99,235,.4)!important}
-.stButton>button[kind="secondary"]{
-  background:var(--surface)!important;color:var(--ink)!important;
-  border:1.5px solid var(--b2)!important;box-shadow:none!important;transform:none!important;
-}
+/* BOTONES */
+.stButton>button{background:linear-gradient(135deg,#2563EB,#0D9488)!important;color:white!important;
+  font-family:'Space Grotesk',sans-serif!important;font-weight:600!important;border:none!important;
+  border-radius:var(--r2)!important;transition:all .18s!important;box-shadow:0 2px 8px rgba(37,99,235,.28)!important}
+.stButton>button:hover{transform:translateY(-1px)!important;box-shadow:0 5px 18px rgba(37,99,235,.38)!important}
+.stButton>button[kind="secondary"]{background:var(--s)!important;color:var(--ink)!important;
+  border:1.5px solid var(--b2)!important;box-shadow:none!important;transform:none!important}
 
-/* ── KPI CARDS ── */
-.kpi-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
-  padding:18px 20px;box-shadow:var(--sh);cursor:pointer;
-  transition:all .2s;position:relative;overflow:hidden;
-}
-.kpi-card:hover{transform:translateY(-3px);box-shadow:var(--sh2);border-color:var(--b2)}
-.kpi-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px}
-.kpi-card.blue::after{background:var(--blue)}
-.kpi-card.green::after{background:var(--green)}
-.kpi-card.amber::after{background:var(--amber)}
-.kpi-card.red::after{background:var(--red)}
-.kpi-card.teal::after{background:var(--teal)}
-.kpi-label{font-size:10px;font-weight:700;color:var(--ink4);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
-.kpi-val{font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;line-height:1;letter-spacing:-1px}
-.kpi-val.blue{color:var(--blue)}.kpi-val.green{color:var(--green)}.kpi-val.amber{color:var(--amber)}
-.kpi-val.red{color:var(--red)}.kpi-val.teal{color:var(--teal)}
-.kpi-sub{font-size:11px;color:var(--ink4);margin-top:5px}
-.kpi-hint{font-size:10px;color:var(--blue);margin-top:6px;font-weight:600}
+/* KPI CLICKEABLE */
+.kpi{background:var(--s);border:1px solid var(--border);border-radius:var(--r);
+  padding:16px 18px;box-shadow:var(--sh);cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.kpi:hover{transform:translateY(-3px);box-shadow:var(--sh2);border-color:var(--b2)}
+.kpi-lbl{font-size:10px;font-weight:700;color:var(--ink4);text-transform:uppercase;letter-spacing:.8px;margin-bottom:7px}
+.kpi-val{font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;line-height:1;letter-spacing:-1px}
+.kpi-sub{font-size:11px;color:var(--ink4);margin-top:4px}
+.kpi-hint{font-size:10px;color:var(--blue);margin-top:5px;font-weight:600}
+.kpi.blue .kpi-val{color:var(--blue)}.kpi.amber .kpi-val{color:var(--amber)}
+.kpi.teal .kpi-val{color:var(--teal)}.kpi.red .kpi-val{color:var(--red)}
+.kpi.green .kpi-val{color:var(--green)}
 
-/* ── ALERTAS ── */
-.al{border-radius:10px;padding:11px 14px;margin-bottom:8px;display:flex;gap:10px;
-  border:1px solid;font-size:12.5px;line-height:1.7;transition:all .15s;cursor:default}
-.al:hover{transform:translateX(2px)}
-.al-ic{font-size:16px;flex-shrink:0;margin-top:1px}
-.al.red{background:var(--red-lt);border-color:#FCA5A5;color:#7F1D1D}
-.al.amber{background:var(--amber-lt);border-color:#FDE68A;color:#78350F}
-.al.green{background:var(--green-lt);border-color:#6EE7B7;color:#065F46}
-.al.blue{background:var(--blue-lt);border-color:#BFDBFE;color:#1E3A8A}
+/* ALERTAS */
+.al{border-radius:9px;padding:10px 13px;margin-bottom:7px;display:flex;gap:9px;border:1px solid;font-size:12.5px;line-height:1.7}
+.al.red{background:var(--r-lt);border-color:#FCA5A5;color:#7F1D1D}
+.al.amber{background:var(--a-lt);border-color:#FDE68A;color:#78350F}
+.al.green{background:var(--g-lt);border-color:#6EE7B7;color:#065F46}
+.al.blue{background:var(--blu-lt);border-color:#BFDBFE;color:#1E3A8A}
 .al.teal{background:#F0FDFA;border-color:#99F6E4;color:#134E4A}
 
-/* ── CARDS ── */
-.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
-  box-shadow:var(--sh);overflow:hidden;margin-bottom:14px}
-.card-h{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;
-  align-items:center;justify-content:space-between}
-.card-title{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:var(--ink)}
-.card-b{padding:16px 18px}
+/* CARDS */
+.card{background:var(--s);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:14px}
+.card-h{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-t{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:var(--ink)}
 
-/* ── EDIFICIO ROWS interactivos ── */
-.edif-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);
-  padding:13px 16px;margin-bottom:7px;cursor:pointer;transition:all .15s;
-  display:flex;align-items:center;gap:12px}
-.edif-row:hover{border-color:var(--blue);box-shadow:var(--sh2);transform:translateX(2px)}
-.edif-name{font-weight:600;font-size:13px;color:var(--ink);flex:1}
-.edif-com{font-size:11px;color:var(--ink4);margin-top:1px}
-.edif-val{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:13px;color:var(--green)}
-.edif-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-
-/* ── TAGS ── */
-.tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;
-  font-size:10.5px;font-weight:600;white-space:nowrap}
-.tag-g{background:var(--green-lt);color:#065F46;border:1px solid #6EE7B7}
-.tag-r{background:var(--red-lt);color:#991B1B;border:1px solid #FCA5A5}
-.tag-b{background:var(--blue-lt);color:#1E3A8A;border:1px solid #BFDBFE}
-.tag-a{background:var(--amber-lt);color:#92400E;border:1px solid #FDE68A}
-.tag-p{background:var(--purple-lt);color:#5B21B6;border:1px solid #DDD6FE}
+/* TAGS */
+.tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:600}
+.tag-g{background:var(--g-lt);color:#065F46;border:1px solid #6EE7B7}
+.tag-r{background:var(--r-lt);color:#991B1B;border:1px solid #FCA5A5}
+.tag-b{background:var(--blu-lt);color:#1E3A8A;border:1px solid #BFDBFE}
+.tag-a{background:var(--a-lt);color:#92400E;border:1px solid #FDE68A}
 .tag-t{background:#F0FDFA;color:#134E4A;border:1px solid #99F6E4}
-.tag-gray{background:var(--s3);color:var(--ink3);border:1px solid var(--b2)}
 
-/* ── TIMELINE ── */
-.tl{position:relative;padding-left:24px}
-.tl::before{content:'';position:absolute;left:7px;top:8px;bottom:0;width:2px;
-  background:var(--border);border-radius:1px}
-.ti{position:relative;margin-bottom:14px}
-.ti-dot{position:absolute;left:-24px;top:4px;width:12px;height:12px;border-radius:50%;
-  border:2px solid white;box-shadow:0 0 0 2px var(--b2)}
+/* TIMELINE */
+.tl{position:relative;padding-left:22px}
+.tl::before{content:'';position:absolute;left:6px;top:8px;bottom:0;width:2px;background:var(--border);border-radius:1px}
+.ti{position:relative;margin-bottom:13px}
+.ti-dot{position:absolute;left:-22px;top:4px;width:11px;height:11px;border-radius:50%;border:2px solid white;box-shadow:0 0 0 2px var(--b2)}
 .ti-date{font-size:10px;font-weight:700;color:var(--ink4);text-transform:uppercase;letter-spacing:.4px}
-.ti-h{font-size:13px;font-weight:600;color:var(--ink);margin:1px 0}
-.ti-t{font-size:12px;color:var(--ink3);line-height:1.6}
+.ti-h{font-size:12.5px;font-weight:600;color:var(--ink);margin:1px 0}
+.ti-t{font-size:11.5px;color:var(--ink3);line-height:1.6}
 
-/* ── NOVEDAD ITEM ── */
-.nov-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);
-  padding:12px 16px;margin-bottom:8px;transition:all .15s;cursor:pointer;
-  border-left:3px solid var(--blue)}
-.nov-item:hover{box-shadow:var(--sh2);transform:translateX(2px)}
-.nov-item.red{border-left-color:var(--red)}
-.nov-item.green{border-left-color:var(--green)}
-.nov-item.amber{border-left-color:var(--amber)}
-.nov-title{font-weight:600;font-size:13px;color:var(--ink)}
-.nov-meta{font-size:11px;color:var(--ink4);margin-top:2px}
-.nov-text{font-size:12.5px;color:var(--ink3);margin-top:5px;line-height:1.6}
+/* CHAT */
+.chat-u{background:linear-gradient(135deg,#2563EB,#0D9488);color:white;padding:10px 14px;border-radius:14px 14px 3px 14px;margin:6px 0;font-weight:500;max-width:80%;margin-left:auto;display:block;font-size:13px}
+.chat-a{background:var(--s);border:1px solid var(--border);padding:12px 16px;border-radius:14px 14px 14px 3px;margin:6px 0;max-width:90%;box-shadow:var(--sh);line-height:1.75;display:block;font-size:13px}
 
-/* ── PAGO ITEM ── */
-.pago-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--r2);
-  padding:11px 16px;margin-bottom:6px;display:flex;align-items:center;gap:12px}
-.pago-name{font-size:12.5px;font-weight:600;color:var(--ink);flex:1}
-.pago-cat{font-size:10.5px;color:var(--ink4)}
-.pago-val{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px}
-.pago-val.gasto{color:var(--red)}.pago-val.ingreso{color:var(--green)}
-
-/* ── CHAT ── */
-.chat-u{background:linear-gradient(135deg,#2563EB,#0D9488);color:white;padding:11px 15px;
-  border-radius:16px 16px 3px 16px;margin:7px 0;font-weight:500;max-width:80%;
-  margin-left:auto;display:block;font-size:13px}
-.chat-a{background:var(--surface);border:1px solid var(--border);padding:13px 17px;
-  border-radius:16px 16px 16px 3px;margin:7px 0;max-width:90%;
-  box-shadow:var(--sh);line-height:1.75;display:block;font-size:13px}
-
-/* ── PULSE ── */
+/* PULSE */
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
-.dot-live{display:inline-block;width:7px;height:7px;background:#22C55E;border-radius:50%;
-  animation:pulse 2s infinite;margin-right:5px;vertical-align:middle}
+.dot-live{display:inline-block;width:7px;height:7px;background:#22C55E;border-radius:50%;animation:pulse 2s infinite;margin-right:5px;vertical-align:middle}
 
-/* ── HERO ── */
-.hero{background:linear-gradient(135deg,#0F172A 0%,#1E3A5F 60%,#0D9488 130%);
-  border-radius:14px;padding:24px 28px;margin-bottom:22px;position:relative;overflow:hidden;color:white}
-.hero::before{content:'';position:absolute;top:-60px;right:-60px;width:220px;height:220px;
-  border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,.2) 0%,transparent 70%)}
+/* HERO */
+.hero{background:linear-gradient(135deg,#0F172A 0%,#1E3A5F 55%,#0D9488 130%);border-radius:13px;padding:22px 26px;margin-bottom:20px;color:white;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-50px;right:-50px;width:180px;height:180px;border-radius:50%;background:radial-gradient(circle,rgba(37,99,235,.2) 0%,transparent 70%)}
 
-/* Fix form */
+/* PAGO */
+.pago-row{background:var(--s);border:1px solid var(--border);border-radius:var(--r2);padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+
 div[data-testid="stForm"]{border:none!important;padding:0!important}
+</style>""", unsafe_allow_html=True)
 
-/* Metricas Streamlit */
-[data-testid="metric-container"]{
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
-  padding:14px!important;box-shadow:var(--sh)}
-</style>
-""", unsafe_allow_html=True)
-
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # USUARIOS
-# ══════════════════════════════════════════════════════════════
-USUARIOS_DEFAULT = {
+# ══════════════════════════════════════════
+USUARIOS_BASE = {
     "luisa":    {"pass":"luisa2026",    "nombre":"Luisa Olivares",     "rol":"gerente",   "comercial":"LUISA OLIVARES",     "activo":True},
     "gerente":  {"pass":"gerente2026",  "nombre":"Luisa Olivares",     "rol":"gerente",   "comercial":"LUISA OLIVARES",     "activo":True},
     "rafael":   {"pass":"rafael2026",   "nombre":"Rafael Torres",      "rol":"comercial", "comercial":"RAFAEL TORRES",      "activo":True},
@@ -232,98 +150,161 @@ USUARIOS_DEFAULT = {
 }
 def get_usuarios():
     if "usuarios_db" not in st.session_state:
-        st.session_state.usuarios_db = dict(USUARIOS_DEFAULT)
+        st.session_state.usuarios_db = dict(USUARIOS_BASE)
     return st.session_state.usuarios_db
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # IA — GROQ
-# ══════════════════════════════════════════════════════════════
-def get_ai_key():
+# ══════════════════════════════════════════
+def get_key():
     k = st.session_state.get("groq_key","")
     if k: return k
     try:
-        k = st.secrets["GROQ_API_KEY"]
+        k = st.secrets.get("GROQ_API_KEY","")
         if k: st.session_state["groq_key"]=k; return k
     except: pass
     return ""
 
-def ai_activa(): return bool(get_ai_key())
+def ai_ok(): return bool(get_key())
 
 def activar_ia(key):
-    key = key.strip()
-    if not key.startswith("gsk_") or len(key)<20:
-        st.error("La key debe empezar con gsk_"); return False
+    key=key.strip()
+    if not key.startswith("gsk_") or len(key)<20: st.error("Key debe empezar con gsk_"); return False
     try:
         Groq(api_key=key).chat.completions.create(model=GROQ_MODEL,messages=[{"role":"user","content":"OK"}],max_tokens=5)
         st.session_state["groq_key"]=key; return True
-    except Exception as e:
-        st.error(f"Key inválida: {str(e)[:80]}"); return False
+    except Exception as e: st.error(f"Key inválida: {str(e)[:80]}"); return False
 
 def ask_ai(prompt, ctx="", max_tokens=2000):
-    key = get_ai_key()
+    key=get_key()
     if not key: return "⚠️ IA no configurada. Ve a ⚙️ Configuración."
     try:
-        msgs = [{"role":"system","content":AI_SYSTEM}]
+        msgs=[{"role":"system","content":AI_SYSTEM}]
         msgs.append({"role":"user","content":f"DATOS CRM:\n{ctx[:18000]}\n\nSOLICITUD:\n{prompt}" if ctx else prompt})
-        r = Groq(api_key=key).chat.completions.create(model=GROQ_MODEL,messages=msgs,max_tokens=max_tokens,temperature=0.7)
+        r=Groq(api_key=key).chat.completions.create(model=GROQ_MODEL,messages=msgs,max_tokens=max_tokens,temperature=0.7)
         return r.choices[0].message.content
     except Exception as e: return f"Error IA: {e}"
 
-# ══════════════════════════════════════════════════════════════
-# CRM
-# ══════════════════════════════════════════════════════════════
-def normalizar(estado):
-    e = str(estado or "").strip().lower()
-    if "vencimiento" in e or ("aprobado" in e and "aut" in e): return "aprobado_espera"
-    if "aprobado" in e and "pendiente" in e: return "cotizado"
-    if "aprobado" in e: return "cotizado"
-    if "negoci" in e or "avanzado" in e: return "negociacion"
-    if "cotiz" in e or "conversando" in e or "proceso" in e or "pendiente" in e: return "cotizado"
-    if "stand" in e or "retomar" in e or "suspendid" in e: return "aprobado_espera"
-    if "rechaz" in e or "perdido" in e: return "perdido"
-    if "cerrado" in e: return "cerrado"
-    if "contrato" in e: return "creacion_contrato"
-    if "financ" in e: return "financiacion"
-    if "obra" in e: return "obra"
-    if "novedad" in e: return "novedades_obra"
-    if "entrega" in e: return "entrega"
-    if "mantenimiento" in e: return "mantenimiento"
-    return e if e in ETAPAS else "lead"
+# ══════════════════════════════════════════
+# CARGA DE DATOS: SHEET → JSON → session_state
+# ══════════════════════════════════════════
+def normalizar(estado_raw, etapa_orig):
+    e = str(etapa_orig or "").strip().lower()
+    er = str(estado_raw or "").strip().lower()
+    if er=="perdido" or "rechaz" in e: return "perdido"
+    if er=="cerrado": return "cerrado"
+    if er=="lead" or e=="lead nuevo": return "lead"
+    for et in ["creacion_contrato","financiacion","obra","novedades_obra","entrega","mantenimiento"]:
+        if er==et: return et
+    if "aprobado aut" in e or "vencimiento" in e: return "aprobado_espera"
+    if "seguimiento activo" in e or "pendiente decisión" in e or "en evaluación" in e: return "evaluacion_consejo"
+    if "contacto frío" in e or "frio" in e: return "cotizado"
+    if "negociac" in er: return "negociacion"
+    if er=="cotizado": return "cotizado"
+    if er=="aprobado": return "evaluacion_consejo"
+    return "cotizado"
+
+def limpiar_num(val):
+    if val is None: return 0
+    s=str(val).replace("$","").replace(".","").replace(",","").replace("#","").strip()
+    try: return int(float(s))
+    except: return 0
+
+def cop(n):
+    try:
+        n=int(float(n or 0))
+        if n==0: return "$0"
+        return "$"+f"{n:,}".replace(",",".")
+    except: return "$0"
+
+@st.cache_data(ttl=300)  # Cache 5 minutos — se actualiza automáticamente
+def cargar_desde_sheet():
+    """Carga los datos del Google Sheet (CSV público). TTL=5min para auto-actualización."""
+    try:
+        req = urllib.request.Request(SHEET_URL, headers={"User-Agent":"Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+        df_raw = pd.read_csv(io.StringIO(raw), dtype=str, on_bad_lines="skip")
+        df_raw.columns = [c.strip() for c in df_raw.columns]
+        rows = []
+        for _, r in df_raw.iterrows():
+            nombre = str(r.get("nombre","")).strip()
+            if not nombre or nombre=="nan": continue
+            estado_raw = str(r.get("estado","")).strip().lower()
+            etapa_orig = str(r.get("etapaOrig","")).strip()
+            estado = normalizar(estado_raw, etapa_orig)
+            tn = limpiar_num(r.get("totalNum") or r.get("total_num") or r.get("valorTotal") or 0)
+            c24 = limpiar_num(r.get("c24Num") or r.get("cuota24Num") or 0) or (tn//24 if tn else 0)
+            c36 = limpiar_num(r.get("c36Num") or r.get("cuota36Num") or 0) or (tn//36 if tn else 0)
+            rows.append({
+                "id":          str(r.get("id","")).strip(),
+                "nombre":      nombre,
+                "comercial":   str(r.get("comercial","")).strip(),
+                "contacto":    str(r.get("contacto","")).strip(),
+                "email":       str(r.get("email","")).strip(),
+                "totalNum":    tn, "c24Num": c24, "c36Num": c36,
+                "total":       cop(tn), "cuota24": cop(c24), "cuota36": cop(c36),
+                "vig":         str(r.get("vig","")).strip(),
+                "vigH":        str(r.get("vigH","")).strip(),
+                "estado":      estado,
+                "etapaOrig":   etapa_orig,
+                "notas":       str(r.get("notas","")).strip(),
+                "lastNote":    str(r.get("lastNote","")).strip(),
+                "lastUpdate":  str(r.get("lastUpdate","")).strip()[:10],
+                "fecha":       str(r.get("fecha","")).strip()[:10],
+                "drive":       str(r.get("drive","")).strip(),
+                "historial":   str(r.get("historial","[]")).strip(),
+                "encuesta":    str(r.get("encuesta","{}")).strip(),
+                "novedad":     str(r.get("novedad","")).strip(),
+            })
+        return pd.DataFrame(rows), f"✅ Sheet sincronizado — {len(rows)} proyectos · {datetime.now().strftime('%H:%M:%S')}", True
+    except Exception as ex:
+        return None, f"⚠️ No se pudo conectar al Sheet: {ex}", False
 
 @st.cache_data
-def cargar_base():
+def cargar_json_base():
+    """Fallback: proyectos.json local (140 proyectos del Sheet descargados)."""
     base = os.path.dirname(os.path.abspath(__file__))
-    ruta = os.path.join(base,"proyectos.json")
+    ruta = os.path.join(base, "proyectos.json")
     if os.path.exists(ruta):
-        with open(ruta,encoding="utf-8") as f: return json.load(f)
-    return []
-
-PROYECTOS_BASE = cargar_base()
+        with open(ruta, encoding="utf-8") as f:
+            data = json.load(f)
+        rows = []
+        for p in data:
+            er = str(p.get("etapaOrig","") or p.get("estado",""))
+            estado = normalizar(p.get("estado",""), er)
+            tn = int(float(p.get("totalNum",0) or 0))
+            c24 = int(float(p.get("c24Num",0) or 0)) or (tn//24 if tn else 0)
+            c36 = int(float(p.get("c36Num",0) or 0)) or (tn//36 if tn else 0)
+            rows.append({**p, "estado":estado, "totalNum":tn, "c24Num":c24, "c36Num":c36,
+                         "total":cop(tn), "cuota24":cop(c24), "cuota36":cop(c36)})
+        return pd.DataFrame(rows)
+    return pd.DataFrame()
 
 def get_crm():
-    if st.session_state.get("crm") is None:
-        rows=[]
-        for p in PROYECTOS_BASE:
-            est_raw = str(p.get("etapaOrig","") or p.get("estado",""))
-            estado = normalizar(est_raw)
-            if estado not in ETAPAS: estado="lead"
-            rows.append({
-                "id":p.get("id",""), "nombre":p.get("nombre",""), "comercial":p.get("comercial",""),
-                "contacto":p.get("contacto",""), "email":p.get("email",""),
-                "totalNum":int(float(p.get("totalNum",0) or 0)),
-                "c24Num":int(float(p.get("c24Num",0) or 0)),
-                "c36Num":int(float(p.get("c36Num",0) or 0)),
-                "vig":p.get("vig",""), "vigH":p.get("vigH",""),
-                "estado":estado, "etapaOrig":est_raw,
-                "notas":p.get("notas",""), "lastUpdate":p.get("lastUpdate",""),
-                "lastNote":p.get("lastNote",""), "fecha":p.get("fecha",""),
-                "drive":p.get("drive",""),
-                "historial":p.get("historial","[]"),
-                "encuesta":p.get("encuesta","{}"),
-                "novedad":p.get("novedad",""),
-            })
-        st.session_state.crm = pd.DataFrame(rows)
-    return st.session_state.crm
+    """Devuelve el DataFrame del CRM. Prioriza Sheet, luego session_state con cambios locales, luego JSON."""
+    if st.session_state.get("crm") is not None:
+        return st.session_state.crm
+    df_sheet, msg, ok = cargar_desde_sheet()
+    if ok and df_sheet is not None and len(df_sheet)>0:
+        st.session_state["sheet_status"] = msg
+        st.session_state["sheet_ok"] = True
+        st.session_state.crm = df_sheet
+        return df_sheet
+    else:
+        st.session_state["sheet_status"] = msg
+        st.session_state["sheet_ok"] = False
+        df_json = cargar_json_base()
+        if len(df_json)>0:
+            st.session_state.crm = df_json
+            return df_json
+    return pd.DataFrame()
+
+def refrescar_sheet():
+    """Fuerza recarga desde el Sheet."""
+    cargar_desde_sheet.clear()
+    st.session_state.pop("crm", None)
+    st.session_state.pop("sheet_status", None)
 
 def mis_proyectos():
     df=get_crm(); u=st.session_state.get("user")
@@ -331,14 +312,14 @@ def mis_proyectos():
     if u["rol"]=="gerente": return df
     return df[df["comercial"].str.upper()==u["comercial"].upper()]
 
-def update_proy(nombre,campos):
+def update_proy(nombre, campos):
     df=get_crm()
     mask=df["nombre"]==nombre
     if mask.any():
         for k,v in campos.items(): df.loc[mask,k]=v
         st.session_state.crm=df
 
-def agregar_historial(nombre,estado,nota,usuario):
+def agregar_historial(nombre, estado, nota, usuario):
     df=get_crm(); mask=df["nombre"]==nombre
     if not mask.any(): return
     try: hist=json.loads(str(df.loc[mask,"historial"].iloc[0] or "[]"))
@@ -346,7 +327,7 @@ def agregar_historial(nombre,estado,nota,usuario):
     hist.append({"fecha":datetime.now().strftime("%d %b %Y %H:%M"),"estado":estado,"nota":nota,"usuario":usuario,"ts":datetime.now().isoformat()})
     df.loc[mask,"historial"]=json.dumps(hist,ensure_ascii=False)
     df.loc[mask,"lastNote"]=nota
-    df.loc[mask,"lastUpdate"]=datetime.now().isoformat()
+    df.loc[mask,"lastUpdate"]=datetime.now().isoformat()[:10]
     df.loc[mask,"estado"]=estado
     df.loc[mask,"novedad"]=f"{datetime.now().strftime('%d %b')} — {nota[:100]}"
     st.session_state.crm=df
@@ -355,147 +336,144 @@ def add_proy(datos):
     df=get_crm()
     st.session_state.crm=pd.concat([pd.DataFrame([datos]),df],ignore_index=True)
 
-def fc(n):
-    try:
-        n=int(float(n or 0))
-        return "$0" if n==0 else "$"+f"{n:,}".replace(",",".")
-    except: return "$0"
-
 def badge(estado):
-    e=ETAPAS.get(estado,{"label":estado,"dot":"#94A3B8"})
-    return f'<span class="tag" style="background:{ETAPAS.get(estado,{}).get("color","#F1F5F9")};border:1px solid rgba(0,0,0,.07);color:#0F172A">{e["label"]}</span>'
+    e=ETAPAS.get(estado,{"label":estado,"color":"#F1F5F9"})
+    return f'<span class="tag" style="background:{e["color"]};border:1px solid rgba(0,0,0,.07);color:#0F172A;white-space:nowrap">{e["label"]}</span>'
 
 def hdr(icon,title,sub=""):
-    st.markdown(f"""<div style='display:flex;align-items:center;gap:14px;margin-bottom:22px;padding-bottom:14px;border-bottom:1px solid var(--border)'>
-      <div style='width:40px;height:40px;border-radius:9px;background:linear-gradient(135deg,#2563EB,#0D9488);display:flex;align-items:center;justify-content:center;font-size:19px;flex-shrink:0'>{icon}</div>
-      <div><div style='font-family:Space Grotesk,sans-serif;font-size:18px;font-weight:700;color:var(--ink);letter-spacing:-.4px'>{title}</div>
+    st.markdown(f"""<div style='display:flex;align-items:center;gap:12px;margin-bottom:20px;padding-bottom:13px;border-bottom:1px solid var(--border)'>
+      <div style='width:38px;height:38px;border-radius:9px;background:linear-gradient(135deg,#2563EB,#0D9488);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0'>{icon}</div>
+      <div><div style='font-family:Space Grotesk,sans-serif;font-size:17px;font-weight:700;color:var(--ink);letter-spacing:-.4px'>{title}</div>
       {'<div style="font-size:11.5px;color:var(--ink4);margin-top:1px">'+sub+'</div>' if sub else ''}</div>
     </div>""",unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # SESSION STATE
-# ══════════════════════════════════════════════════════════════
-def init():
-    for k,v in {"logged_in":False,"user":None,"page":"Dashboard","messages":[],
-                "crm":None,"correo":"","editing":"","vista_estado":None}.items():
-        if k not in st.session_state: st.session_state[k]=v
-init()
+# ══════════════════════════════════════════
+for k,v in {"logged_in":False,"user":None,"page":"Dashboard","messages":[],"crm":None,
+            "correo":"","editing":"","vista_estado":None,"sheet_ok":False,"sheet_status":""}.items():
+    if k not in st.session_state: st.session_state[k]=v
 
 if not st.session_state.get("groq_key"):
     try:
-        k=st.secrets["GROQ_API_KEY"]
+        k=st.secrets.get("GROQ_API_KEY","")
         if k: st.session_state["groq_key"]=k
     except: pass
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # LOGIN
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 def pg_login():
     c1,c2,c3=st.columns([1,1.1,1])
     with c2:
-        st.markdown("""<div style='text-align:center;padding:52px 0 28px'>
-          <div style='font-family:Space Grotesk,sans-serif;font-size:10px;font-weight:700;color:#64748B;letter-spacing:5px;text-transform:uppercase;margin-bottom:18px'>PLATAFORMA COMERCIAL</div>
-          <div style='font-family:Space Grotesk,sans-serif;font-size:40px;font-weight:700;color:#0F172A;letter-spacing:-2px'>ÁGORA TECH</div>
-          <div style='width:32px;height:3px;background:linear-gradient(90deg,#2563EB,#0D9488);margin:16px auto;border-radius:2px'></div>
-          <div style='font-size:13px;color:#94A3B8'>Gestión Comercial</div>
+        st.markdown("""<div style='text-align:center;padding:50px 0 26px'>
+          <div style='font-family:Space Grotesk,sans-serif;font-size:10px;font-weight:700;color:#64748B;letter-spacing:5px;text-transform:uppercase;margin-bottom:16px'>PLATAFORMA COMERCIAL</div>
+          <div style='font-family:Space Grotesk,sans-serif;font-size:38px;font-weight:700;color:#0F172A;letter-spacing:-2px'>ÁGORA TECH</div>
+          <div style='width:30px;height:3px;background:linear-gradient(90deg,#2563EB,#0D9488);margin:14px auto;border-radius:2px'></div>
+          <div style='font-size:13px;color:#94A3B8'>Gestión Comercial · 140 proyectos · $4.2B pipeline</div>
         </div>""",unsafe_allow_html=True)
         with st.form("lf"):
-            u=st.text_input("Usuario",placeholder="rafael / sonia / lina / luisa...")
+            u=st.text_input("Usuario",placeholder="luisa / rafael / sonia...")
             p=st.text_input("Contraseña",type="password",placeholder="••••••••")
             if st.form_submit_button("Ingresar →",use_container_width=True):
                 un=u.strip().lower(); users=get_usuarios()
                 if un in users and users[un]["activo"] and users[un]["pass"]==p:
                     st.session_state.logged_in=True; st.session_state.user=users[un]; st.rerun()
                 else: st.error("Usuario o contraseña incorrectos")
-        st.markdown("""<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:11px;margin-top:12px;font-size:11px;color:#94A3B8;text-align:center'>
+        st.markdown("""<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:10px;margin-top:12px;font-size:11px;color:#94A3B8;text-align:center'>
           luisa/luisa2026 · rafael/rafael2026 · sonia/sonia2026<br>lina/lina2026 · alberto/alberto2026 · santiago/santiago2026
         </div>""",unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # SIDEBAR
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 def sidebar():
-    u=st.session_state.user; es_g=u["rol"]=="gerente"; ai_ok=ai_activa()
-    df=mis_proyectos()
-    hace_7=(datetime.now()-timedelta(days=7)).isoformat()
+    u=st.session_state.user; es_g=u["rol"]=="gerente"
+    df=mis_proyectos(); hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
     n_nov=len(df[df["lastUpdate"].astype(str).str.strip()>hace_7])
+    sheet_ok=st.session_state.get("sheet_ok",False)
 
     with st.sidebar:
-        # Logo
-        st.markdown(f"""<div style='padding:20px 16px 8px'>
-          <div style='font-family:Space Grotesk,sans-serif;font-size:17px;font-weight:700;color:white;letter-spacing:-.5px'>Ágora Tech</div>
+        # Logo + usuario
+        st.markdown(f"""<div style='padding:18px 14px 6px'>
+          <div style='font-family:Space Grotesk,sans-serif;font-size:16px;font-weight:700;color:white;letter-spacing:-.4px'>Ágora Tech</div>
           <div style='font-size:9px;color:rgba(255,255,255,.25);letter-spacing:2px;text-transform:uppercase;margin-top:1px'>{VERSION}</div>
         </div>
-        <div style='background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);border-radius:9px;padding:10px 13px;margin:6px 12px 16px'>
+        <div style='background:rgba(37,99,235,.15);border:1px solid rgba(37,99,235,.3);border-radius:8px;padding:9px 12px;margin:4px 12px 12px'>
           <div style='font-size:12.5px;font-weight:600;color:white'>{u["nombre"]}</div>
           <div style='font-size:10px;color:rgba(255,255,255,.4);margin-top:2px'>
-            <span class="dot-live"></span>{"IA activa" if ai_ok else "IA sin configurar"}</div>
+            <span class="dot-live"></span>{"IA activa" if ai_ok() else "IA sin configurar"} · {'🟢 Sheet' if sheet_ok else '🟡 Local'}
+          </div>
         </div>""",unsafe_allow_html=True)
 
-        # Secciones del menú
-        secciones = [
-            ("PRINCIPAL",[("📊","Dashboard"),("🔔",f"Novedades{' ('+str(n_nov)+')' if n_nov>0 else ''}")]),
-            ("COMERCIAL",[("📋","Proyectos"),("📝","Actualizar Estado"),("🧮","Nueva Cotización"),("📊","Encuesta Prospecto"),("📅","Calendario")]),
+        secciones=[
+            ("PRINCIPAL",[("📊","Dashboard"),("🔔",f"Novedades{' ('+str(n_nov)+')' if n_nov else ''}")]),
+            ("COMERCIAL",[("📋","Proyectos"),("📝","Actualizar Estado"),("🧮","Nueva Cotización"),("📊","Encuesta Prospecto"),("📅","Calendario"),("🗺️","Mapa de Proyectos")]),
             ("IA",[("✉️","Correos IA"),("🤖","Asistente IA")]),
         ]
         if es_g:
-            secciones += [
-                ("GERENCIA",[("📈","Informe Semanal"),("💰","Pagos y Finanzas"),("🔍","Auditoría"),("🎯","Pipeline")]),
-                ("ADMIN",[("👥","Usuarios"),("⚙️","Configuración")]),
-            ]
+            secciones+=[("GERENCIA",[("📈","Informe Semanal"),("💰","Pagos y Finanzas"),("🔍","Auditoría"),("🎯","Pipeline")]),
+                        ("ADMIN",[("👥","Usuarios"),("⚙️","Configuración")])]
         else:
-            secciones += [("CONFIG",[("⚙️","Configuración")])]
+            secciones+=[("CONFIG",[("⚙️","Configuración")])]
 
-        for sec_title, items in secciones:
-            st.markdown(f'<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:2px;text-transform:uppercase;padding:10px 12px 4px">{sec_title}</div>',unsafe_allow_html=True)
-            for icono,nombre in items:
-                pg_name = nombre.split(" (")[0]
-                activo = st.session_state.page == pg_name
-                if activo:
-                    st.markdown('<div style="background:rgba(37,99,235,.25);border-radius:8px;margin:0 8px 2px">',unsafe_allow_html=True)
-                    if st.button(f"{icono}  {nombre}",key=f"nav_{nombre}",use_container_width=True):
-                        st.session_state.page=pg_name; st.rerun()
-                    st.markdown('</div>',unsafe_allow_html=True)
-                else:
-                    if st.button(f"{icono}  {nombre}",key=f"nav_{nombre}",use_container_width=True):
-                        st.session_state.page=pg_name; st.rerun()
+        for sec,items in secciones:
+            st.markdown(f'<div style="font-size:9px;font-weight:700;color:rgba(255,255,255,.22);letter-spacing:2px;text-transform:uppercase;padding:10px 12px 3px">{sec}</div>',unsafe_allow_html=True)
+            for ico,nom in items:
+                pg_name=nom.split(" (")[0]
+                activo=st.session_state.page==pg_name
+                if activo: st.markdown('<div style="background:rgba(37,99,235,.22);border-radius:7px;margin:0 8px 2px">',unsafe_allow_html=True)
+                if st.button(f"{ico}  {nom}",key=f"nav_{nom}",use_container_width=True):
+                    st.session_state.page=pg_name; st.rerun()
+                if activo: st.markdown('</div>',unsafe_allow_html=True)
 
-        st.markdown('<div style="margin:12px 12px 0;border-top:1px solid rgba(255,255,255,.07);padding-top:10px">',unsafe_allow_html=True)
+        st.markdown('<div style="margin:10px 12px 0;border-top:1px solid rgba(255,255,255,.06);padding-top:10px">',unsafe_allow_html=True)
+        if st.button("🔄 Sincronizar Sheet",use_container_width=True,key="sync"):
+            refrescar_sheet(); st.rerun()
         if st.button("← Salir",use_container_width=True,key="logout"):
-            for k in ["logged_in","user","messages","page","crm","correo","editing","groq_key","vista_estado"]:
-                st.session_state.pop(k,None)
+            for k in list(st.session_state.keys()): st.session_state.pop(k,None)
             st.rerun()
         st.markdown('</div>',unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
-# DASHBOARD — INTERACTIVO
-# ══════════════════════════════════════════════════════════════
+        # Estado de conexión
+        status=st.session_state.get("sheet_status","")
+        if status:
+            color="#22C55E" if sheet_ok else "#F59E0B"
+            st.markdown(f'<div style="margin:6px 12px;font-size:9.5px;color:{color};word-break:break-word">{status}</div>',unsafe_allow_html=True)
+
+# ══════════════════════════════════════════
+# DASHBOARD INTERACTIVO
+# ══════════════════════════════════════════
 def pg_dashboard():
     u=st.session_state.user; es_g=u["rol"]=="gerente"; df=mis_proyectos()
+    if df.empty: st.warning("Cargando datos..."); return
 
-    # Si hay un estado seleccionado, mostrar lista filtrada
+    # Banner de conexión
+    sheet_ok=st.session_state.get("sheet_ok",False)
+    if not sheet_ok:
+        st.markdown('<div class="al amber"><div>⚠️</div><div><strong>Usando datos locales.</strong> El Sheet no está accesible. Haz clic en "🔄 Sincronizar Sheet" en la barra lateral.</div></div>',unsafe_allow_html=True)
+
+    # Vista filtrada (clic en KPI)
     if st.session_state.get("vista_estado"):
         est=st.session_state.vista_estado
         lbl=ETAPAS.get(est,{"label":est})["label"]
-        col1,col2=st.columns([4,1])
-        with col1: hdr("📋",f"Proyectos — {lbl}",f"Clic en un edificio para ver el detalle")
-        with col2:
-            if st.button("← Volver al Dashboard"):
-                st.session_state.vista_estado=None; st.rerun()
+        col_r,col_b=st.columns([4,1])
+        with col_r: hdr("📋",f"{lbl}",f"{len(df[df['estado']==est])} proyectos — clic para ver detalle")
+        with col_b:
+            if st.button("← Volver"): st.session_state.vista_estado=None; st.rerun()
         df_f=df[df["estado"]==est]
         for _,r in df_f.iterrows():
             tn=int(r.get("totalNum",0) or 0)
-            nota=str(r.get("lastNote","") or r.get("notas","") or "")[:120]
+            nota=str(r.get("lastNote","") or r.get("notas","") or "")[:200]
+            upd=str(r.get("lastUpdate",""))[:10] or "—"
             dot=ETAPAS.get(est,{"dot":"#94A3B8"})["dot"]
-            upd=str(r.get("lastUpdate",""))[:10] or "Sin actualizar"
-            with st.expander(f"🏢 {r['nombre']}  ·  {fc(tn)}  ·  {str(r.get('comercial','')).split()[0] if r.get('comercial') else '—'}"):
+            with st.expander(f"🏢 {r['nombre']}  ·  {cop(tn)}  ·  {str(r.get('comercial','')).split()[0] if r.get('comercial') else '—'}"):
                 c1,c2,c3=st.columns(3)
-                c1.metric("Valor total",fc(tn))
-                c2.metric("Cuota 36m",fc(int(r.get("c36Num",0) or 0)))
-                c3.metric("Última actualización",upd)
+                c1.metric("Valor total",cop(tn))
+                c2.metric("Cuota 36m",cop(int(r.get("c36Num",0) or 0)))
+                c3.metric("Actualizado",upd)
                 if nota and nota!="nan":
-                    st.markdown(f'<div class="al blue"><div class="al-ic">📝</div><div>{nota}</div></div>',unsafe_allow_html=True)
-                # Historial
+                    st.markdown(f'<div class="al blue"><div>📝</div><div>{nota}</div></div>',unsafe_allow_html=True)
                 try: hist=json.loads(str(r.get("historial","[]") or "[]"))
                 except: hist=[]
                 if hist:
@@ -506,399 +484,341 @@ def pg_dashboard():
                         st.markdown(f'<div class="ti"><div class="ti-dot" style="background:{dc}"></div><div class="ti-date">{ev.get("fecha","")} · {ev.get("usuario","")}</div><div class="ti-h">{ETAPAS.get(ev.get("estado",""),{"label":ev.get("estado","")})["label"]}</div><div class="ti-t">{ev.get("nota","")}</div></div>',unsafe_allow_html=True)
                     st.markdown('</div>',unsafe_allow_html=True)
                 b1,b2=st.columns(2)
-                if b1.button("📝 Actualizar estado",key=f"du_{r['nombre']}"):
+                if b1.button("📝 Actualizar",key=f"v_{r['nombre']}"):
                     st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.session_state.vista_estado=None; st.rerun()
-                if b2.button("✉️ Generar correo IA",key=f"dc_{r['nombre']}"):
-                    st.session_state.page="Correos IA"; st.session_state.vista_estado=None; st.rerun()
         return
 
-    # ── HERO ──
-    total_pip=int(df["totalNum"].sum()); n_activos=len(df[~df["estado"].isin(["perdido","cerrado"])])
+    # HERO
+    pip=int(df["totalNum"].sum()); n_act=len(df[~df["estado"].isin(["perdido","cerrado"])])
     st.markdown(f"""<div class="hero">
-      <div style='font-size:10px;font-weight:700;color:rgba(13,148,136,.9);letter-spacing:3px;text-transform:uppercase;margin-bottom:10px'><span class="dot-live"></span>EN VIVO · {datetime.now().strftime("%d %B %Y %H:%M")}</div>
-      <div style='font-family:Space Grotesk,sans-serif;font-size:22px;font-weight:700;color:white;letter-spacing:-.6px;margin-bottom:5px'>{"Dashboard Gerencial" if es_g else f"Hola, {u['nombre'].split()[0]} 👋"}</div>
-      <div style='font-size:13px;color:rgba(255,255,255,.45)'>{n_activos} proyectos activos · Pipeline {fc(total_pip)}</div>
+      <div style='font-size:10px;font-weight:700;color:rgba(13,148,136,.9);letter-spacing:3px;text-transform:uppercase;margin-bottom:8px'><span class="dot-live"></span>EN VIVO · {datetime.now().strftime("%d %B %Y %H:%M")} · {'Sheet ✓' if sheet_ok else 'Local'}</div>
+      <div style='font-family:Space Grotesk,sans-serif;font-size:21px;font-weight:700;color:white;letter-spacing:-.5px;margin-bottom:4px'>{"Dashboard Gerencial" if es_g else f"Hola, {u['nombre'].split()[0]} 👋"}</div>
+      <div style='font-size:12.5px;color:rgba(255,255,255,.45)'>{len(df)} proyectos totales · {n_act} activos · Pipeline {cop(pip)}</div>
     </div>""",unsafe_allow_html=True)
 
-    # ── KPIs INTERACTIVOS ──
-    st.markdown("#### Resumen del pipeline — *clic en cualquier tarjeta para ver los edificios*")
+    # KPIs INTERACTIVOS
+    eval_n  = len(df[df["estado"]=="evaluacion_consejo"])
+    cotiz_n = len(df[df["estado"]=="cotizado"])
+    standb  = len(df[df["estado"]=="aprobado_espera"])
+    perd_n  = len(df[df["estado"]=="perdido"])
+    cerra_n = len(df[df["estado"]=="cerrado"])
+    neg_n   = len(df[df["estado"]=="negociacion"])
 
-    total_n=len(df)
-    activos_n=len(df[~df["estado"].isin(["perdido","cerrado"])])
-    standby_n=len(df[df["estado"]=="aprobado_espera"])
-    rechazados_n=len(df[df["estado"]=="perdido"])
-    cerrados_n=len(df[df["estado"]=="cerrado"])
-    neg_n=len(df[df["estado"]=="negociacion"])
-    cotiz_n=len(df[df["estado"]=="cotizado"])
-
-    c1,c2,c3,c4,c5 = st.columns(5)
+    st.markdown("#### Resumen — *clic en cualquier tarjeta para ver los edificios*")
+    c1,c2,c3,c4,c5,c6=st.columns(6)
 
     with c1:
-        st.markdown(f'<div class="kpi-card blue"><div class="kpi-label">Presentadas</div><div class="kpi-val blue">{total_n}</div><div class="kpi-sub">Ene–Jun 2026</div></div>',unsafe_allow_html=True)
-
+        st.markdown(f'<div class="kpi blue"><div class="kpi-lbl">Total presentadas</div><div class="kpi-val blue">{len(df)}</div><div class="kpi-sub">Ene–Jun 2026</div></div>',unsafe_allow_html=True)
     with c2:
-        st.markdown(f'<div class="kpi-card amber"><div class="kpi-label">En seguimiento</div><div class="kpi-val amber">{cotiz_n}</div><div class="kpi-sub">cotizaciones activas</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
-        if st.button("Ver activos →",key="k_activos",use_container_width=True):
-            st.session_state.vista_estado="cotizado"; st.rerun()
-
+        st.markdown(f'<div class="kpi" style="border-bottom:2px solid #D97706"><div class="kpi-lbl">En evaluación</div><div class="kpi-val amber">{eval_n}</div><div class="kpi-sub">reuniones consejo</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
+        if st.button("Ver →",key="ke",use_container_width=True): st.session_state.vista_estado="evaluacion_consejo"; st.rerun()
     with c3:
-        st.markdown(f'<div class="kpi-card teal"><div class="kpi-label">Stand-by Vig.</div><div class="kpi-val teal">{standby_n}</div><div class="kpi-sub">reactivar sep-nov</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
-        if st.button("Ver stand-by →",key="k_standby",use_container_width=True):
-            st.session_state.vista_estado="aprobado_espera"; st.rerun()
-
+        st.markdown(f'<div class="kpi" style="border-bottom:2px solid #F59E0B"><div class="kpi-lbl">Contacto frío</div><div class="kpi-val" style="color:#F59E0B">{cotiz_n}</div><div class="kpi-sub">sin respuesta activa</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
+        if st.button("Ver →",key="kc",use_container_width=True): st.session_state.vista_estado="cotizado"; st.rerun()
     with c4:
-        st.markdown(f'<div class="kpi-card red"><div class="kpi-label">Rechazados</div><div class="kpi-val red">{rechazados_n}</div><div class="kpi-sub">28% del total</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
-        if st.button("Ver rechazados →",key="k_rechaz",use_container_width=True):
-            st.session_state.vista_estado="perdido"; st.rerun()
-
+        st.markdown(f'<div class="kpi" style="border-bottom:2px solid #0EA5E9"><div class="kpi-lbl">Stand-by Vigilancia</div><div class="kpi-val teal">{standb}</div><div class="kpi-sub">reactivar sep–nov</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
+        if st.button("Ver →",key="ks",use_container_width=True): st.session_state.vista_estado="aprobado_espera"; st.rerun()
     with c5:
-        st.markdown(f'<div class="kpi-card green"><div class="kpi-label">Contratos</div><div class="kpi-val {"green" if cerrados_n>0 else "red"}">{cerrados_n}</div><div class="kpi-sub">{"🎉 Primer cierre!" if cerrados_n>0 else "Q3 2026 esperado"}</div></div>',unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi" style="border-bottom:2px solid #EF4444"><div class="kpi-lbl">Rechazados</div><div class="kpi-val red">{perd_n}</div><div class="kpi-sub">{round(perd_n/len(df)*100) if len(df) else 0}% del total</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
+        if st.button("Ver →",key="kr",use_container_width=True): st.session_state.vista_estado="perdido"; st.rerun()
+    with c6:
+        st.markdown(f'<div class="kpi" style="border-bottom:2px solid {"#059669" if cerra_n>0 else "#EF4444"}"><div class="kpi-lbl">Contratos</div><div class="kpi-val {"green" if cerra_n>0 else "red"}">{cerra_n}</div><div class="kpi-sub">{"🎉 ¡Primer cierre!" if cerra_n>0 else "Q3 2026 esperado"}</div></div>',unsafe_allow_html=True)
 
     st.markdown("<br>",unsafe_allow_html=True)
 
-    # ── NEGOCIANDO — urgente ──
+    # Negociando — urgente
     neg_df=df[df["estado"]=="negociacion"]
     if len(neg_df)>0:
-        st.markdown("#### 🔥 Negociando ahora — acción inmediata")
+        st.markdown("#### 🔥 Negociando — acción inmediata")
         for _,r in neg_df.iterrows():
             nota=str(r.get("lastNote","") or r.get("notas","") or "Seguimiento urgente")[:150]
-            st.markdown(f'<div class="al red"><div class="al-ic">🔥</div><div><strong>{r["nombre"]}</strong> · {str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"} · {fc(int(r.get("totalNum",0) or 0))}<br>{nota}</div></div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="al red"><div>🔥</div><div><strong>{r["nombre"]}</strong> · {str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"} · {cop(int(r.get("totalNum",0) or 0))}<br>{nota}</div></div>',unsafe_allow_html=True)
 
-    # ── GRÁFICAS ──
+    # Gráficas
     c1,c2=st.columns(2)
     with c1:
-        data=[{"Etapa":"Cotización","n":cotiz_n},{"Etapa":"Stand-by","n":standby_n},
-              {"Etapa":"Negociando","n":neg_n},{"Etapa":"Perdido","n":rechazados_n},{"Etapa":"Cerrado","n":cerrados_n}]
-        fig=px.bar(pd.DataFrame(data),x="Etapa",y="n",title="Proyectos por etapa",
-                   color="Etapa",color_discrete_map={"Cotización":"#2563EB","Stand-by":"#0D9488",
-                    "Negociando":"#F97316","Perdido":"#EF4444","Cerrado":"#059669"},labels={"n":""})
+        data=[
+            {"Etapa":"En evaluación/Consejo","n":eval_n,"color":"#D97706"},
+            {"Etapa":"Contacto frío","n":cotiz_n,"color":"#F59E0B"},
+            {"Etapa":"Negociando","n":neg_n,"color":"#F97316"},
+            {"Etapa":"Stand-by Vig.","n":standb,"color":"#0EA5E9"},
+            {"Etapa":"Perdido","n":perd_n,"color":"#EF4444"},
+            {"Etapa":"Cerrado","n":cerra_n,"color":"#059669"},
+        ]
+        df_d=pd.DataFrame(data)
+        fig=px.bar(df_d,x="Etapa",y="n",title="Proyectos por etapa",color="Etapa",
+                   color_discrete_map={d["Etapa"]:d["color"] for d in data},
+                   labels={"n":""})
         fig.update_layout(plot_bgcolor="white",paper_bgcolor="white",showlegend=False,
-                          font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=8,l=0,r=0))
+                          font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=6,l=0,r=0))
         fig.update_traces(marker_line_width=0)
         st.plotly_chart(fig,use_container_width=True)
     with c2:
-        if es_g:
+        if es_g and "comercial" in df.columns:
             dc=df[df["totalNum"]>0].groupby("comercial")["totalNum"].sum().reset_index()
-            dc["M"]=(dc["totalNum"]/1e6).round(1); dc["Com"]=dc["comercial"].str.split().str[0]
+            dc["M"]=(dc["totalNum"]/1e6).round(1)
+            dc["Com"]=dc["comercial"].str.split().str[0]
             fig2=px.bar(dc.sort_values("M",ascending=True),x="M",y="Com",orientation="h",
-                        title="Pipeline por comercial ($M)",color="M",
-                        color_continuous_scale=["#2563EB","#0D9488"],labels={"M":"$M","Com":""})
+                        title="Pipeline por comercial ($M COP)",color="M",
+                        color_continuous_scale=["#2563EB","#0D9488"],labels={"M":"","Com":""})
             fig2.update_layout(plot_bgcolor="white",paper_bgcolor="white",coloraxis_showscale=False,
-                               font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=8))
+                               font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=6))
         else:
             mis_e=df.groupby("estado").size().reset_index(name="n")
             mis_e["Estado"]=mis_e["estado"].map(lambda x:ETAPAS.get(x,{"label":x})["label"])
             fig2=px.pie(mis_e,values="n",names="Estado",hole=0.48,title="Mis proyectos",
-                        color_discrete_sequence=["#2563EB","#F59E0B","#F97316","#EF4444","#059669","#0D9488"])
-            fig2.update_layout(paper_bgcolor="white",font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=8))
+                        color_discrete_sequence=["#D97706","#F59E0B","#F97316","#0EA5E9","#EF4444","#059669"])
+            fig2.update_layout(paper_bgcolor="white",font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=6))
         st.plotly_chart(fig2,use_container_width=True)
 
-    # ── ALERTAS automáticas ──
-    st.markdown("#### 🚨 Alertas")
-    hace_7=(datetime.now()-timedelta(days=7)).isoformat()
+    # Alertas
+    st.markdown("#### 🚨 Alertas automáticas")
+    hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
     if es_g:
         for com in sorted(df["comercial"].dropna().unique()):
             dc=df[df["comercial"]==com]
             neg_c=dc[dc["estado"]=="negociacion"]
+            eval_c=dc[dc["estado"]=="evaluacion_consejo"]
             esp_c=dc[dc["estado"]=="aprobado_espera"]
-            sin_c=dc[(dc["lastUpdate"].astype(str).str.strip()=="")|(dc["lastUpdate"].astype(str).str.strip()<hace_7)]
-            n_al=len(neg_c)+len(esp_c)+(1 if len(sin_c)>0 else 0)
+            sin_c=dc[dc["lastUpdate"].astype(str).str.strip()<hace_7]
+            n_al=len(neg_c)+(1 if len(esp_c)>0 else 0)+(1 if len(sin_c)>5 else 0)
             ico="🔴" if len(neg_c)>0 else ("🟡" if n_al>0 else "🟢")
-            with st.expander(f"{ico} {com} — {len(dc)} proyectos · {n_al} alertas",expanded=n_al>0):
+            with st.expander(f"{ico} {com} — {len(dc)} proy · {len(eval_c)} en evaluación · {len(esp_c)} stand-by",expanded=len(neg_c)>0):
                 for _,r in neg_c.iterrows():
                     nota=str(r.get("lastNote","") or r.get("notas",""))[:100]
-                    st.markdown(f'<div class="al red"><div class="al-ic">🔥</div><div><strong>{r["nombre"]}</strong><br>{nota or "Seguimiento urgente"}</div></div>',unsafe_allow_html=True)
+                    st.markdown(f'<div class="al red"><div>🔥</div><div><strong>NEGOCIACIÓN: {r["nombre"]}</strong><br>{nota}</div></div>',unsafe_allow_html=True)
                 for _,r in esp_c.iterrows():
                     vig=str(r.get("vigH",""))
                     if any(m in vig.lower() for m in ["jun","jul","ago","sep","oct","nov"]):
-                        st.markdown(f'<div class="al teal"><div class="al-ic">🔒</div><div><strong>Reactivar: {r["nombre"]}</strong> — Vencimiento vigilancia: {vig}</div></div>',unsafe_allow_html=True)
-                if len(sin_c)>0:
-                    ns=", ".join(sin_c["nombre"].head(4).tolist())
-                    st.markdown(f'<div class="al amber"><div class="al-ic">📋</div><div><strong>{len(sin_c)} sin actualizar (+7 días):</strong> {ns}{"..." if len(sin_c)>4 else ""}</div></div>',unsafe_allow_html=True)
+                        st.markdown(f'<div class="al teal"><div>🔒</div><div><strong>Reactivar: {r["nombre"]}</strong> — Vigilancia vence: {vig}</div></div>',unsafe_allow_html=True)
+                if len(eval_c)>0:
+                    nombres=", ".join(eval_c["nombre"].head(4).tolist())
+                    st.markdown(f'<div class="al amber"><div>📋</div><div><strong>{len(eval_c)} en evaluación/consejo:</strong> {nombres}{"..." if len(eval_c)>4 else ""}</div></div>',unsafe_allow_html=True)
+                if len(sin_c)>5:
+                    st.markdown(f'<div class="al blue"><div>⏰</div><div><strong>{len(sin_c)} sin actualizar en +7 días</strong></div></div>',unsafe_allow_html=True)
                 if n_al==0:
-                    st.markdown('<div class="al green"><div class="al-ic">✅</div><div>Al día</div></div>',unsafe_allow_html=True)
+                    st.markdown('<div class="al green"><div>✅</div><div>Al día</div></div>',unsafe_allow_html=True)
     else:
-        mi_df=df
-        neg_m=mi_df[mi_df["estado"]=="negociacion"]
-        sin_m=mi_df[(mi_df["lastUpdate"].astype(str).str.strip()=="")|(mi_df["lastUpdate"].astype(str).str.strip()<hace_7)]
-        for _,r in neg_m.iterrows():
-            nota=str(r.get("lastNote","") or r.get("notas",""))[:150]
-            st.markdown(f'<div class="al red"><div class="al-ic">🔥</div><div><strong>NEGOCIACIÓN: {r["nombre"]}</strong><br>{nota}</div></div>',unsafe_allow_html=True)
-        if len(sin_m)>0:
-            st.markdown(f'<div class="al amber"><div class="al-ic">📋</div><div><strong>{len(sin_m)} proyectos sin actualizar en +7 días.</strong> Ve a "Actualizar Estado".</div></div>',unsafe_allow_html=True)
-        if len(neg_m)==0 and len(sin_m)==0:
-            st.markdown('<div class="al green"><div class="al-ic">✅</div><div>Todo al día — sin alertas pendientes</div></div>',unsafe_allow_html=True)
-    if not ai_activa():
-        st.markdown('<div class="al blue"><div class="al-ic">💡</div><div><strong>IA sin configurar.</strong> Ve a ⚙️ Configuración.</div></div>',unsafe_allow_html=True)
+        mi=df
+        for _,r in mi[mi["estado"]=="negociacion"].iterrows():
+            st.markdown(f'<div class="al red"><div>🔥</div><div><strong>NEGOCIACIÓN: {r["nombre"]}</strong><br>{str(r.get("lastNote",""))[:150]}</div></div>',unsafe_allow_html=True)
+        sin=mi[mi["lastUpdate"].astype(str).str.strip()<hace_7]
+        if len(sin)>0:
+            st.markdown(f'<div class="al amber"><div>📋</div><div><strong>{len(sin)} proyectos sin actualizar en +7 días.</strong> Usa Actualizar Estado.</div></div>',unsafe_allow_html=True)
+    if not ai_ok():
+        st.markdown('<div class="al blue"><div>💡</div><div><strong>IA no configurada.</strong> Ve a ⚙️ Configuración → pega tu API Key de Groq.</div></div>',unsafe_allow_html=True)
 
-# ══════════════════════════════════════════════════════════════
-# NOVEDADES — INTERACTIVAS
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
+# NOVEDADES
+# ══════════════════════════════════════════
 def pg_novedades():
-    hdr("🔔","Novedades","Actualizaciones de los últimos 7 días — clic para ver el detalle")
+    hdr("🔔","Novedades","Actualizaciones de los últimos 7 días — clic para ver detalle")
     df=mis_proyectos()
-    hace_7=(datetime.now()-timedelta(days=7)).isoformat()
+    hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
     df_nov=df[df["lastUpdate"].astype(str).str.strip()>hace_7].sort_values("lastUpdate",ascending=False)
     df_sin=df[~(df["lastUpdate"].astype(str).str.strip()>hace_7)]
 
     c1,c2,c3=st.columns(3)
-    c1.markdown(f'<div class="kpi-card green"><div class="kpi-label">Actualizados</div><div class="kpi-val green">{len(df_nov)}</div><div class="kpi-sub">últimos 7 días</div></div>',unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi-card red"><div class="kpi-label">Sin actualizar</div><div class="kpi-val red">{len(df_sin)}</div><div class="kpi-sub">requieren seguimiento</div></div>',unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi-card blue"><div class="kpi-label">Pipeline movido</div><div class="kpi-val blue">{fc(int(df_nov["totalNum"].sum()))}</div><div class="kpi-sub">en proyectos activos</div></div>',unsafe_allow_html=True)
+    c1.markdown(f'<div class="kpi" style="border-bottom:2px solid #059669"><div class="kpi-lbl">Actualizados</div><div class="kpi-val green">{len(df_nov)}</div><div class="kpi-sub">últimos 7 días</div></div>',unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi" style="border-bottom:2px solid #EF4444"><div class="kpi-lbl">Sin actualizar</div><div class="kpi-val red">{len(df_sin)}</div><div class="kpi-sub">requieren seguimiento</div></div>',unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi" style="border-bottom:2px solid #2563EB"><div class="kpi-lbl">Pipeline movido</div><div class="kpi-val blue">{cop(int(df_nov["totalNum"].sum()))}</div><div class="kpi-sub">en proyectos activos</div></div>',unsafe_allow_html=True)
 
     st.markdown("<br>",unsafe_allow_html=True)
 
     if len(df_nov)==0:
         st.info("No hay actualizaciones esta semana. Usa 'Actualizar Estado' para registrar seguimiento.")
     else:
-        st.markdown("#### ✅ Actualizados esta semana")
+        st.markdown(f"#### ✅ Actualizados ({len(df_nov)})")
         for _,r in df_nov.iterrows():
             est=str(r.get("estado",""))
-            nota=str(r.get("lastNote","") or r.get("notas","") or "")[:180]
-            dot=ETAPAS.get(est,{"dot":"#94A3B8"})["dot"]
+            nota=str(r.get("lastNote","") or r.get("notas","") or "")[:200]
             upd=str(r.get("lastUpdate",""))[:10]
-            col_class={"negociacion":"red","cotizado":"blue","perdido":"red","cerrado":"green","aprobado_espera":"amber"}.get(est,"blue")
-
             with st.expander(f"🏢 {r['nombre']}  ·  {ETAPAS.get(est,{'label':est})['label']}  ·  {upd}"):
                 c1,c2,c3=st.columns(3)
-                c1.metric("Valor",fc(int(r.get("totalNum",0) or 0)))
+                c1.metric("Valor",cop(int(r.get("totalNum",0) or 0)))
                 c2.metric("Comercial",str(r.get("comercial","—")).split()[0] if r.get("comercial") else "—")
                 c3.metric("Estado",ETAPAS.get(est,{"label":est})["label"])
                 if nota and nota!="nan":
-                    st.markdown(f'<div class="al blue"><div class="al-ic">📝</div><div>{nota}</div></div>',unsafe_allow_html=True)
+                    st.markdown(f'<div class="al blue"><div>📝</div><div>{nota}</div></div>',unsafe_allow_html=True)
                 try: hist=json.loads(str(r.get("historial","[]") or "[]"))
                 except: hist=[]
                 if hist:
-                    st.markdown("**Historial reciente:**")
+                    st.markdown("**Historial:**")
                     st.markdown('<div class="tl">',unsafe_allow_html=True)
                     for ev in reversed(hist[-4:]):
                         dc=ETAPAS.get(ev.get("estado",""),{"dot":"#94A3B8"})["dot"]
                         st.markdown(f'<div class="ti"><div class="ti-dot" style="background:{dc}"></div><div class="ti-date">{ev.get("fecha","")} · {ev.get("usuario","")}</div><div class="ti-h">{ETAPAS.get(ev.get("estado",""),{"label":ev.get("estado","")})["label"]}</div><div class="ti-t">{ev.get("nota","")}</div></div>',unsafe_allow_html=True)
                     st.markdown('</div>',unsafe_allow_html=True)
-                if st.button("📝 Actualizar ahora",key=f"n_upd_{r['nombre']}"):
+                if st.button("📝 Actualizar ahora",key=f"nu_{r['nombre']}"):
                     st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.rerun()
 
     if len(df_sin)>0:
         st.markdown("---")
-        st.markdown("#### ⚠️ Sin actualizar esta semana")
-        df_sin_sorted=df_sin[df_sin["totalNum"]>0].sort_values("totalNum",ascending=False)
-        for _,r in df_sin_sorted.head(15).iterrows():
-            est=str(r.get("estado",""))
-            upd=str(r.get("lastUpdate",""))[:10] or "Nunca"
-            col=st.columns([3,1.5,1.5,1])
-            col[0].markdown(f"**{r['nombre']}**")
-            col[1].markdown(f"<small style='color:#94A3B8'>{str(r.get('comercial','')).split()[0] if r.get('comercial') else '—'}</small>",unsafe_allow_html=True)
-            col[2].markdown(f"<small style='color:#94A3B8'>{upd}</small>",unsafe_allow_html=True)
-            if col[3].button("📝",key=f"ns_{r['nombre']}",help="Actualizar"):
+        st.markdown(f"#### ⚠️ Sin actualizar ({len(df_sin)})")
+        df_sin_v=df_sin[df_sin["totalNum"]>0].sort_values("totalNum",ascending=False)
+        for _,r in df_sin_v.head(20).iterrows():
+            cols=st.columns([3,1.5,1.5,1])
+            cols[0].markdown(f"**{r['nombre']}**  <span style='font-size:11px;color:#94A3B8'>{ETAPAS.get(str(r.get('estado','')),{'label':''})['label']}</span>",unsafe_allow_html=True)
+            cols[1].markdown(f"<small style='color:#94A3B8'>{str(r.get('comercial','')).split()[0] if r.get('comercial') else '—'}</small>",unsafe_allow_html=True)
+            cols[2].markdown(f"<small style='color:#94A3B8'>{str(r.get('lastUpdate','Nunca'))[:10]}</small>",unsafe_allow_html=True)
+            if cols[3].button("📝",key=f"ns_{r['nombre']}"):
                 st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.rerun()
 
     st.markdown("---")
-    if st.button("🤖 Generar resumen ejecutivo de novedades con IA",use_container_width=True):
-        if not ai_activa(): st.error("Activa la IA en ⚙️ Configuración")
+    if st.button("🤖 Generar resumen ejecutivo con IA",use_container_width=True):
+        if not ai_ok(): st.error("Activa IA en ⚙️ Configuración")
         else:
             ctx=df_nov[["nombre","comercial","estado","lastNote","totalNum"]].to_string() if len(df_nov)>0 else "Sin novedades esta semana"
-            with st.spinner("Generando..."): r=ask_ai(f"Resumen ejecutivo de novedades comerciales semana {datetime.now().strftime('%d %b')}. ## MOVIMIENTOS POSITIVOS ## ALERTAS ## ACCIONES PRIORITARIAS MAÑANA. Bullet points, negrilla en nombres.",ctx)
+            with st.spinner("..."): r=ask_ai(f"Resumen ejecutivo de novedades comerciales semana {datetime.now().strftime('%d %b')}. ## MOVIMIENTOS POSITIVOS ## ALERTAS ## ACCIONES PRIORITARIAS MAÑANA. Bullet points, negrilla en nombres.",ctx)
             st.markdown(r)
 
-# ══════════════════════════════════════════════════════════════
-# INFORME SEMANAL (GERENTE)
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
+# INFORME SEMANAL
+# ══════════════════════════════════════════
 def pg_informe_semanal():
-    hdr("📈","Informe Semanal","Para socios y equipo directivo — generado automáticamente")
-    df=get_crm(); hace_7=(datetime.now()-timedelta(days=7)).isoformat()
-
-    # Banner
-    st.markdown(f"""<div style='background:linear-gradient(135deg,#0F172A,#1E3A5F);border-radius:12px;padding:20px 24px;margin-bottom:22px;color:white'>
-      <div style='font-family:Space Grotesk,sans-serif;font-size:18px;font-weight:700'>Informe Gerencial — Ágora Tech</div>
-      <div style='font-size:11.5px;color:rgba(255,255,255,.45);margin-top:3px'>
-        Semana {(datetime.now()-timedelta(days=7)).strftime("%d %b")} – {datetime.now().strftime("%d %b %Y")} · Gerente: Luisa Olivares · {len(df)} propuestas totales</div>
+    hdr("📈","Informe Semanal","Para socios y equipo directivo")
+    df=get_crm(); hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
+    st.markdown(f"""<div style='background:linear-gradient(135deg,#0F172A,#1E3A5F);border-radius:12px;padding:18px 22px;margin-bottom:20px;color:white'>
+      <div style='font-family:Space Grotesk,sans-serif;font-size:17px;font-weight:700'>Informe Gerencial — Ágora Tech</div>
+      <div style='font-size:11px;color:rgba(255,255,255,.4);margin-top:3px'>Semana {(datetime.now()-timedelta(days=7)).strftime("%d %b")} – {datetime.now().strftime("%d %b %Y")} · {len(df)} propuestas totales</div>
     </div>""",unsafe_allow_html=True)
 
-    # KPIs
     c1,c2,c3,c4=st.columns(4)
-    c1.metric("Pipeline activo",fc(int(df[~df["estado"].isin(["perdido","cerrado"])]["totalNum"].sum())))
-    c2.metric("Propuestas totales",f"{len(df)}")
-    c3.metric("Stand-by reactivar",f"{len(df[df['estado']=='aprobado_espera'])}")
-    c4.metric("Contratos firmados",f"{len(df[df['estado']=='cerrado'])}")
+    c1.metric("Pipeline activo",cop(int(df[~df["estado"].isin(["perdido","cerrado"])]["totalNum"].sum())))
+    c2.metric("En evaluación",str(len(df[df["estado"]=="evaluacion_consejo"])))
+    c3.metric("Stand-by Vig.",str(len(df[df["estado"]=="aprobado_espera"])))
+    c4.metric("Contratos firmados",str(len(df[df["estado"]=="cerrado"])))
 
-    # Por comercial
     st.markdown("#### 👥 Por comercial")
-    res=df.groupby("comercial").agg(Total=("nombre","count"),Activos=("estado",lambda x:sum(~x.isin(["perdido","cerrado"]))),Pipeline=("totalNum","sum")).reset_index()
+    res=df.groupby("comercial").agg(Total=("nombre","count"),Evaluacion=("estado",lambda x:sum(x=="evaluacion_consejo")),Perdidos=("estado",lambda x:sum(x=="perdido")),Pipeline=("totalNum","sum")).reset_index()
     res["$M"]=(res["Pipeline"]/1e6).round(1)
-    st.dataframe(res[["comercial","Total","Activos","$M"]].rename(columns={"comercial":"Comercial"}),use_container_width=True,hide_index=True)
+    st.dataframe(res[["comercial","Total","Evaluacion","Perdidos","$M"]].rename(columns={"comercial":"Comercial","Evaluacion":"En evaluación"}),use_container_width=True,hide_index=True)
 
-    # Novedades
     df_nov=df[df["lastUpdate"].astype(str).str.strip()>hace_7].sort_values("lastUpdate",ascending=False)
-    st.markdown(f"#### 🔔 Novedades de la semana — {len(df_nov)} actualizaciones")
+    st.markdown(f"#### 🔔 Novedades ({len(df_nov)})")
     for _,r in df_nov.head(8).iterrows():
         nota=str(r.get("lastNote","") or r.get("notas",""))[:100]
-        st.markdown(f"""<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:9px 13px;margin-bottom:6px;display:flex;align-items:center;gap:12px'>
+        st.markdown(f"""<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:10px'>
           <div style='flex:1'><div style='font-size:12.5px;font-weight:600;color:#0F172A'>{r["nombre"]}</div>
-          <div style='font-size:11.5px;color:#64748B;margin-top:2px'>{nota or "Sin nota"}</div></div>
+          <div style='font-size:11px;color:#64748B;margin-top:1px'>{nota or "Sin nota"}</div></div>
           {badge(str(r.get("estado","")))}
         </div>""",unsafe_allow_html=True)
 
-    # Cierres próximos
     st.markdown("#### 🔥 Cierres probables jul 2026")
-    cierres=[("Country 136","Rafael","Asamblea jun 27","red"),("Park 104","Rafael","Asamblea jun 13","red"),("Ed. Risaralda","Rafael/Luisa","Asamblea extraordinaria jul","red"),("Ed. Camila","Lina","Reunión consejo jun 9","amber"),("Ed. Los Pinos","Lina","Evaluando propuestas","amber"),("Ed. El Cerro","Rafael","Visita Alto 61 jun 11","blue")]
+    cierres=[("Country 136","Rafael","Asamblea jun 27","red"),("Park 104","Rafael","Asamblea jun 13","red"),("Ed. Risaralda","Rafael/Luisa","Asamblea extraordinaria jul","red"),("Ed. Camila","Lina","Reunión consejo jun 9","amber"),("Ed. Los Pinos","Lina","Asamblea tentativa jul 16","amber"),("Ed. Cesanne","Rafael","Asamblea jul 16","amber")]
     for n,c,s,col in cierres:
-        icon={"red":"🔥","amber":"🟡","blue":"💡"}[col]
-        st.markdown(f'<div class="al {col}"><div class="al-ic">{icon}</div><div><strong>{n}</strong> ({c})<br>{s}</div></div>',unsafe_allow_html=True)
+        st.markdown(f'<div class="al {col}"><div>{"🔥" if col=="red" else "🟡"}</div><div><strong>{n}</strong> ({c}) — {s}</div></div>',unsafe_allow_html=True)
 
-    # Generar informe
     st.markdown("---")
     c1,c2=st.columns(2)
-    with c1: tipo=st.selectbox("Tipo de informe:",["Informe Gerencial Ejecutivo","Reporte Pipeline por Comercial","Análisis Cierres Probables","Diagnóstico del Proceso","Plan de Acción Semana Siguiente"])
-    with c2: notas_i=st.text_area("Instrucciones:",height=68,placeholder="Ej: Enfatizar Country 136...")
+    with c1: tipo=st.selectbox("Tipo:",["Informe Gerencial Ejecutivo","Pipeline por Comercial","Análisis Cierres Probables","Diagnóstico del Proceso","Plan de Acción Semana Siguiente"])
+    with c2: notas_i=st.text_area("Instrucciones:",height=60,placeholder="Ej: Enfatizar Country 136...")
     if st.button("🤖 Generar informe completo",use_container_width=True):
-        if not ai_activa(): st.error("Activa IA en ⚙️ Configuración")
+        if not ai_ok(): st.error("Activa IA en ⚙️ Configuración")
         else:
-            prompt=f"""Genera {tipo} para Ágora Tech Colombia.
-{f"Instrucciones: {notas_i}" if notas_i else ""}
+            with st.spinner("Generando..."): r=ask_ai(f"""Genera {tipo} para Ágora Tech Colombia. {f"Instrucciones: {notas_i}" if notas_i else ""}
 Fecha: {datetime.now().strftime("%d de %B de %Y")}
-## 1. RESUMEN EJECUTIVO ## 2. MÉTRICAS ## 3. ANÁLISIS POR COMERCIAL ## 4. TOP 8 MÁS CERCANOS AL CIERRE ## 5. NOVEDADES SEMANA ## 6. ALERTAS ## 7. RECOMENDACIONES ## 8. PLAN 7 DÍAS
-Tono ejecutivo. Sin ---."""
-            with st.spinner("Generando..."): r=ask_ai(prompt,df.to_string(max_rows=127),max_tokens=3000)
+## 1. RESUMEN EJECUTIVO ## 2. MÉTRICAS ## 3. POR COMERCIAL ## 4. TOP 8 CIERRES ## 5. NOVEDADES ## 6. ALERTAS ## 7. RECOMENDACIONES ## 8. PLAN 7 DÍAS
+Tono ejecutivo. Sin ---.""",df.to_string(max_rows=140),max_tokens=3000)
             st.markdown(r)
             c1,c2=st.columns(2)
-            c1.download_button("📥 .md",data=r,file_name=f"Informe_Agora_{datetime.now().strftime('%Y%m%d')}.md")
-            c2.download_button("📥 .txt",data=r,file_name=f"Informe_Agora_{datetime.now().strftime('%Y%m%d')}.txt")
+            c1.download_button("📥 .md",data=r,file_name=f"Informe_{datetime.now().strftime('%Y%m%d')}.md")
+            c2.download_button("📥 .txt",data=r,file_name=f"Informe_{datetime.now().strftime('%Y%m%d')}.txt")
 
-# ══════════════════════════════════════════════════════════════
-# PAGOS Y FINANZAS (GERENTE)
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
+# PAGOS Y FINANZAS
+# ══════════════════════════════════════════
 def pg_pagos():
-    hdr("💰","Pagos y Finanzas","Control de costos y proyección de rentabilidad")
-
-    # Estructura de costos fijos julio 2026
-    GASTOS_FIJOS = [
-        {"nombre":"Luisa Olivares — Coordinadora","tipo":"Nómina","valor":7_000_000,"variante":"fijo","detalle":"Salario $7M + prestaciones"},
-        {"nombre":"Comercial nuevo (julio)","tipo":"Nómina","valor":3_000_000,"variante":"fijo","detalle":"Salario $3M + prestaciones ~$1M"},
-        {"nombre":"Leads / Publicidad (Meta Ads)","tipo":"Marketing","valor":1_500_000,"variante":"fijo","detalle":"$1.5M mensual"},
-        {"nombre":"Diseñador — cotizaciones","tipo":"Variable","valor":0,"variante":"variable","detalle":"$50.000 por presentación enviada"},
+    hdr("💰","Pagos y Finanzas","Control de costos · Simulador de rentabilidad")
+    COSTOS=[
+        {"nombre":"Luisa Olivares — Coordinadora","tipo":"Nómina","valor":7_000_000,"nota":"$7M salario + prestaciones ~$2.3M"},
+        {"nombre":"Comercial nuevo (julio 2026)","tipo":"Nómina","valor":3_000_000,"nota":"$3M salario + prestaciones ~$1M"},
+        {"nombre":"Leads / Publicidad (Meta Ads)","tipo":"Marketing","valor":1_500_000,"nota":"$1.5M/mes"},
+        {"nombre":"Diseñador — presentaciones","tipo":"Variable","valor":0,"nota":"$50.000 por presentación enviada"},
     ]
+    total_fijo=sum(c["valor"] for c in COSTOS)
 
-    st.markdown("#### 📊 Estructura de costos mensual — Julio 2026")
     c1,c2,c3,c4=st.columns(4)
-    total_fijo=sum(g["valor"] for g in GASTOS_FIJOS if g["variante"]=="fijo")
+    c1.markdown(f'<div class="kpi" style="border-bottom:2px solid #EF4444"><div class="kpi-lbl">Costos fijos/mes</div><div class="kpi-val red">{cop(total_fijo)}</div><div class="kpi-sub">sin prestaciones</div></div>',unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi" style="border-bottom:2px solid #D97706"><div class="kpi-lbl">Diseñador</div><div class="kpi-val amber">$50K</div><div class="kpi-sub">por presentación</div></div>',unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi" style="border-bottom:2px solid #2563EB"><div class="kpi-lbl">Ticket promedio</div><div class="kpi-val blue">~$83M</div><div class="kpi-sub">COP por contrato</div></div>',unsafe_allow_html=True)
+    c4.markdown(f'<div class="kpi" style="border-bottom:2px solid #059669"><div class="kpi-lbl">1 contrato =</div><div class="kpi-val green">~7x</div><div class="kpi-sub">vs costo mensual</div></div>',unsafe_allow_html=True)
 
-    c1.markdown(f'<div class="kpi-card red"><div class="kpi-label">Costos fijos/mes</div><div class="kpi-val red">{fc(total_fijo)}</div><div class="kpi-sub">sin prestaciones</div></div>',unsafe_allow_html=True)
-    c2.markdown(f'<div class="kpi-card amber"><div class="kpi-label">Costo diseñador</div><div class="kpi-val amber">$50K</div><div class="kpi-sub">por presentación</div></div>',unsafe_allow_html=True)
-    c3.markdown(f'<div class="kpi-card blue"><div class="kpi-label">Primer contrato</div><div class="kpi-val blue">~$83M</div><div class="kpi-sub">ticket promedio CRM</div></div>',unsafe_allow_html=True)
-    c4.markdown(f'<div class="kpi-card green"><div class="kpi-label">ROI primer cierre</div><div class="kpi-val green">~10x</div><div class="kpi-sub">vs costo mensual</div></div>',unsafe_allow_html=True)
-
-    st.markdown("<br>",unsafe_allow_html=True)
-
-    # Tabla de costos
+    st.markdown("<br>")
     st.markdown("#### 💸 Detalle de costos")
-    for g in GASTOS_FIJOS:
-        color="red" if g["variante"]=="fijo" else "amber"
-        val_str=fc(g["valor"]) if g["valor"]>0 else "Variable"
+    for c in COSTOS:
+        val=cop(c["valor"]) if c["valor"]>0 else "Variable"
+        color="#EF4444" if c["valor"]>0 else "#D97706"
         st.markdown(f"""<div class="pago-row">
-          <div style='width:10px;height:10px;border-radius:50%;background:{"#EF4444" if color=="red" else "#F59E0B"};flex-shrink:0'></div>
-          <div style='flex:1'>
-            <div class="pago-name">{g["nombre"]}</div>
-            <div class="pago-cat">{g["tipo"]} · {g["detalle"]}</div>
-          </div>
-          <div class="pago-val {"gasto" if g["valor"]>0 else ""}">{val_str}/mes</div>
+          <div style='width:9px;height:9px;border-radius:50%;background:{color};flex-shrink:0'></div>
+          <div style='flex:1'><div style='font-size:12.5px;font-weight:600;color:#0F172A'>{c["nombre"]}</div>
+          <div style='font-size:11px;color:#64748B'>{c["tipo"]} · {c["nota"]}</div></div>
+          <div style='font-family:Space Grotesk,sans-serif;font-weight:700;font-size:13px;color:{color}'>{val}/mes</div>
         </div>""",unsafe_allow_html=True)
 
-    # Simulador de presentaciones
     st.markdown("---")
-    st.markdown("#### 🧮 Simulador — ¿cuánto cuesta conseguir un contrato?")
+    st.markdown("#### 🧮 Simulador — ¿Cuánto cuesta conseguir un contrato?")
     c1,c2=st.columns(2)
     with c1:
-        n_pres=st.slider("Presentaciones enviadas en el mes",10,80,51,help="En abril enviaron 51")
-        tasa_cierre=st.slider("Tasa de cierre esperada (%)",1,30,5,help="Sector: 5-15% en ciclo de 6-12 meses")
-        valor_contrato=st.number_input("Valor promedio por contrato ($)",value=83_000_000,step=5_000_000,format="%d")
+        n_pres=st.slider("Presentaciones enviadas/mes",10,80,51,help="En abril enviaron 51")
+        tasa=st.slider("Tasa de cierre esperada (%)",1,25,5)
+        val_con=st.number_input("Valor promedio por contrato ($)",value=83_000_000,step=5_000_000,format="%d")
     with c2:
-        costo_diseno=n_pres*50_000
-        costo_total_mes=total_fijo+costo_diseno
-        contratos_esp=n_pres*(tasa_cierre/100)
-        ingreso_esp=contratos_esp*valor_contrato
-        utilidad=ingreso_esp-costo_total_mes
-
-        st.markdown(f"""
-        <div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:16px 18px'>
-          <div style='font-family:Space Grotesk,sans-serif;font-size:13px;font-weight:600;color:#0F172A;margin-bottom:12px'>Proyección mensual</div>
-          <div style='display:grid;gap:8px'>
-            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12.5px'>Costo diseñador ({n_pres} pres.)</span><span style='font-weight:600;color:#EF4444'>{fc(costo_diseno)}</span></div>
-            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12.5px'>Costo total del mes</span><span style='font-weight:600;color:#EF4444'>{fc(costo_total_mes)}</span></div>
-            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12.5px'>Contratos esperados</span><span style='font-weight:600;color:#2563EB'>{contratos_esp:.1f}</span></div>
-            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12.5px'>Ingreso esperado</span><span style='font-weight:600;color:#059669'>{fc(int(ingreso_esp))}</span></div>
-            <div style='border-top:1px solid #E2E8F0;margin-top:4px;padding-top:8px;display:flex;justify-content:space-between'>
+        dis=n_pres*50_000; total=total_fijo+dis
+        cont_esp=n_pres*(tasa/100); ing=cont_esp*val_con; util=ing-total
+        st.markdown(f"""<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:14px 16px'>
+          <div style='font-family:Space Grotesk,sans-serif;font-size:13px;font-weight:600;color:#0F172A;margin-bottom:10px'>Proyección mensual</div>
+          <div style='display:grid;gap:7px'>
+            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12px'>Diseñador ({n_pres} presentaciones)</span><span style='font-weight:600;color:#EF4444'>{cop(dis)}</span></div>
+            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12px'>Costo total del mes</span><span style='font-weight:600;color:#EF4444'>{cop(total)}</span></div>
+            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12px'>Contratos esperados</span><span style='font-weight:600;color:#2563EB'>{cont_esp:.1f}</span></div>
+            <div style='display:flex;justify-content:space-between'><span style='color:#64748B;font-size:12px'>Ingreso esperado</span><span style='font-weight:600;color:#059669'>{cop(int(ing))}</span></div>
+            <div style='border-top:1px solid #E2E8F0;margin-top:4px;padding-top:7px;display:flex;justify-content:space-between'>
               <span style='font-weight:700;color:#0F172A'>Utilidad estimada</span>
-              <span style='font-family:Space Grotesk,sans-serif;font-size:16px;font-weight:700;color:{"#059669" if utilidad>0 else "#EF4444"}'>{fc(int(utilidad))}</span>
+              <span style='font-family:Space Grotesk,sans-serif;font-size:15px;font-weight:700;color:{"#059669" if util>0 else "#EF4444"}'>{cop(int(util))}</span>
             </div>
           </div>
         </div>""",unsafe_allow_html=True)
 
-    # Registro de pagos manuales
     st.markdown("---")
-    st.markdown("#### ➕ Registrar pago o gasto")
+    st.markdown("#### ➕ Registrar gasto")
     if "pagos_log" not in st.session_state: st.session_state.pagos_log=[]
-    with st.form("pago_form"):
+    with st.form("pf"):
         c1,c2,c3=st.columns(3)
-        with c1: concepto=st.text_input("Concepto *",placeholder="Ej: Pago diseñador mayo")
-        with c2:
-            tipo_p=st.selectbox("Tipo",["Nómina","Marketing","Diseño","Operativo","Otro"])
-            monto=st.number_input("Monto ($)",min_value=0,value=0,step=50_000,format="%d")
-        with c3:
-            fecha_p=st.date_input("Fecha",value=datetime.now())
-            estado_p=st.selectbox("Estado",["Pagado","Pendiente","Aprobado"])
-        notas_p=st.text_input("Notas",placeholder="Referencia, proveedor...")
+        with c1: concepto=st.text_input("Concepto *"); tipo_p=st.selectbox("Tipo",["Nómina","Marketing","Diseño","Operativo","Otro"])
+        with c2: monto=st.number_input("Monto ($)",min_value=0,value=0,step=50_000,format="%d"); fecha_p=st.date_input("Fecha",value=datetime.now())
+        with c3: estado_p=st.selectbox("Estado",["Pagado","Pendiente","Aprobado"]); notas_p=st.text_input("Notas")
         if st.form_submit_button("💾 Registrar",use_container_width=True):
             if concepto and monto>0:
                 st.session_state.pagos_log.append({"fecha":str(fecha_p),"concepto":concepto,"tipo":tipo_p,"monto":monto,"estado":estado_p,"notas":notas_p})
-                st.success(f"✅ Registrado: {concepto} — {fc(monto)}")
-            else: st.error("Concepto y monto son obligatorios")
-
+                st.success(f"✅ {concepto} — {cop(monto)}")
+            else: st.error("Concepto y monto obligatorios")
     if st.session_state.pagos_log:
-        st.markdown("#### 📋 Pagos registrados esta sesión")
+        st.markdown("**Pagos registrados esta sesión:**")
         df_p=pd.DataFrame(st.session_state.pagos_log)
-        df_p["Monto"]=df_p["monto"].apply(fc)
-        st.dataframe(df_p[["fecha","concepto","tipo","Monto","estado","notas"]],use_container_width=True,hide_index=True)
-        total_reg=sum(p["monto"] for p in st.session_state.pagos_log)
-        st.markdown(f'<div class="al red"><div class="al-ic">💸</div><div><strong>Total registrado esta sesión: {fc(total_reg)}</strong></div></div>',unsafe_allow_html=True)
+        df_p["Monto"]=df_p["monto"].apply(cop)
+        st.dataframe(df_p[["fecha","concepto","tipo","Monto","estado"]],use_container_width=True,hide_index=True)
+        st.markdown(f'<div class="al red"><div>💸</div><div><strong>Total sesión: {cop(sum(p["monto"] for p in st.session_state.pagos_log))}</strong></div></div>',unsafe_allow_html=True)
 
-    # Análisis IA
     st.markdown("---")
     if st.button("🤖 Análisis financiero con IA",use_container_width=True):
-        if not ai_activa(): st.error("Activa IA en ⚙️ Configuración")
+        if not ai_ok(): st.error("Activa IA en ⚙️ Configuración")
         else:
-            df_crm=get_crm()
-            prompt=f"""Analiza la situación financiera de Ágora Tech Colombia:
-
-COSTOS MENSUALES JULIO 2026:
-- Luisa Olivares (coordinadora): $7M + prestaciones
-- Comercial nuevo: $3M + prestaciones ~$1M
-- Marketing/Leads: $1.5M/mes  
-- Diseñador: $50.000 por presentación (variable)
-- Total fijo estimado: ~$12.5M/mes
-
-CRM: {len(df_crm)} propuestas, Pipeline {fc(int(df_crm["totalNum"].sum()))}, 0 contratos cerrados
-Ticket promedio: ~$83M por contrato
-Presentaciones promedio: 51/mes (abril)
-Inversión acumulada leads Feb-Jun: ~$17M
-
-## 1. DIAGNÓSTICO FINANCIERO ACTUAL
-## 2. PUNTO DE EQUILIBRIO (¿cuántos contratos necesitan al mes?)
-## 3. PROYECCIÓN Jul-Dic 2026 con escenarios
-## 4. RECOMENDACIONES PARA OPTIMIZAR COSTOS
-## 5. ALERTA: ¿Cuánto tiempo pueden operar sin cierres?
-
-Sé directo y usa cifras concretas."""
-            with st.spinner("Analizando..."): r=ask_ai(prompt)
+            with st.spinner("..."): r=ask_ai(f"""Analiza situación financiera Ágora Tech Colombia:
+COSTOS JULIO 2026: Luisa $7M + prestaciones · Comercial nuevo $3M + prestaciones · Marketing $1.5M · Diseñador $50K/presentación
+CRM: 140 propuestas, pipeline $4.2B, 0 contratos, ticket promedio ~$83M, 51 presentaciones/mes en abril.
+## 1. DIAGNÓSTICO FINANCIERO ## 2. PUNTO DE EQUILIBRIO ## 3. PROYECCIÓN Jul-Dic 2026 ## 4. OPTIMIZACIÓN COSTOS ## 5. RIESGO DE LIQUIDEZ
+Cifras concretas. Español colombiano.""")
             st.markdown(r)
 
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 # PROYECTOS
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 def pg_proyectos():
     es_g=st.session_state.user["rol"]=="gerente"; df=mis_proyectos()
-    hdr("📋","Proyectos","Pipeline completo con historial")
+    hdr("📋","Proyectos",f"{len(df)} en el CRM")
     c1,c2,c3=st.columns([2,1,1])
-    with c1: buscar=st.text_input("🔍 Buscar edificio",placeholder="Nombre...")
+    with c1: buscar=st.text_input("🔍 Buscar",placeholder="Nombre del edificio...")
     with c2: filtro_e=st.selectbox("Estado",["Todos"]+ESTADOS_LISTA,format_func=lambda x:ETAPAS.get(x,{"label":x})["label"] if x!="Todos" else "Todos")
     with c3:
         if es_g: filtro_c=st.selectbox("Comercial",["Todos"]+sorted(df["comercial"].dropna().unique().tolist()))
@@ -907,22 +827,22 @@ def pg_proyectos():
     if buscar: dff=dff[dff["nombre"].str.contains(buscar,case=False,na=False)]
     if filtro_e!="Todos": dff=dff[dff["estado"]==filtro_e]
     if filtro_c!="Todos": dff=dff[dff["comercial"]==filtro_c]
-    st.markdown(f'<div style="font-size:12px;color:#94A3B8;margin-bottom:12px">{len(dff)} proyectos · {fc(int(dff["totalNum"].sum()))}</div>',unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size:12px;color:#94A3B8;margin-bottom:10px">{len(dff)} proyectos · {cop(int(dff["totalNum"].sum()))}</div>',unsafe_allow_html=True)
     for _,r in dff.iterrows():
         tn=int(r.get("totalNum",0) or 0); est=str(r.get("estado","lead"))
         nota=str(r.get("lastNote","") or r.get("notas","") or "")
-        lbl=f"🏢 {r['nombre']}  ·  {fc(tn)}  ·  {ETAPAS.get(est,{'label':est})['label']}"
-        with st.expander(lbl):
+        with st.expander(f"🏢 {r['nombre']}  ·  {cop(tn)}  ·  {ETAPAS.get(est,{'label':est})['label']}"):
             ti,th=st.tabs(["📋 Info","📜 Historial"])
             with ti:
                 c1,c2,c3,c4=st.columns(4)
-                c1.metric("Valor",fc(tn)); c2.metric("Cuota 24m",fc(int(r.get("c24Num",0) or 0)))
-                c3.metric("Cuota 36m",fc(int(r.get("c36Num",0) or 0))); c4.metric("Estado",ETAPAS.get(est,{"label":est})["label"])
-                if nota and nota!="nan": st.markdown(f'<div class="al blue"><div class="al-ic">📝</div><div>{nota[:300]}</div></div>',unsafe_allow_html=True)
+                c1.metric("Valor",cop(tn)); c2.metric("Cuota 24m",cop(int(r.get("c24Num",0) or 0)))
+                c3.metric("Cuota 36m",cop(int(r.get("c36Num",0) or 0))); c4.metric("Actualizado",str(r.get("lastUpdate","—"))[:10])
+                if nota and nota!="nan":
+                    st.markdown(f'<div class="al blue"><div>📝</div><div>{nota[:300]}</div></div>',unsafe_allow_html=True)
                 b1,b2=st.columns(2)
-                if b1.button("📝 Actualizar",key=f"pu_{r.get('id',r['nombre'])}"):
+                if b1.button("📝 Actualizar",key=f"pu_{r['nombre']}"):
                     st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.rerun()
-                if b2.button("✉️ Correo IA",key=f"pc_{r.get('id',r['nombre'])}"):
+                if b2.button("✉️ Correo IA",key=f"pc_{r['nombre']}"):
                     st.session_state.page="Correos IA"; st.rerun()
             with th:
                 try: hist=json.loads(str(r.get("historial","[]") or "[]"))
@@ -945,17 +865,18 @@ def pg_actualizar():
     if sel!="— Selecciona —":
         r=df[df["nombre"]==sel].iloc[0]; est=str(r.get("estado","lead"))
         c1,c2,c3=st.columns(3)
-        c1.metric("Valor",fc(int(r.get("totalNum",0) or 0)))
+        c1.metric("Valor",cop(int(r.get("totalNum",0) or 0)))
         c2.metric("Estado actual",ETAPAS.get(est,{"label":est})["label"])
-        c3.metric("Última actualización",str(r.get("lastUpdate","Nunca"))[:10] or "Nunca")
-        if r.get("lastNote"): st.markdown(f'<div class="al blue"><div class="al-ic">📝</div><div>Última nota: {str(r["lastNote"])[:200]}</div></div>',unsafe_allow_html=True)
+        c3.metric("Actualizado",str(r.get("lastUpdate","Nunca"))[:10] or "Nunca")
+        if str(r.get("lastNote",""))!="nan" and r.get("lastNote"):
+            st.markdown(f'<div class="al blue"><div>📝</div><div>Última nota: {str(r["lastNote"])[:200]}</div></div>',unsafe_allow_html=True)
         with st.form("uf"):
             nuevo_e=st.selectbox("Nuevo estado *",ESTADOS_LISTA,format_func=lambda x:ETAPAS.get(x,{"label":x})["label"],index=ESTADOS_LISTA.index(est) if est in ESTADOS_LISTA else 0)
-            nota=st.text_area("Nota de seguimiento * (obligatoria)",placeholder="¿Qué pasó? ¿Próximo paso? ¿Quién respondió?...")
+            nota=st.text_area("Nota * (obligatoria)",placeholder="¿Qué pasó? ¿Próximo paso? ¿Quién respondió?...")
             if nuevo_e in ["creacion_contrato","financiacion","obra","novedades_obra","entrega","mantenimiento","cerrado"]:
                 c1,c2=st.columns(2)
-                with c1: contrato=st.text_input("N° contrato",placeholder="CT-2026-001"); obra_ini=st.text_input("Inicio obra",placeholder="15 jul 2026")
-                with c2: financ=st.text_area("Detalles financiación",height=68); obra_fin=st.text_input("Fin estimado",placeholder="24 ago 2026")
+                with c1: contrato=st.text_input("N° contrato",placeholder="CT-2026-001"); obra_ini=st.text_input("Inicio obra")
+                with c2: financ=st.text_area("Detalles financiación",height=60); obra_fin=st.text_input("Fin estimado")
             else: contrato=financ=obra_ini=obra_fin=""
             if st.form_submit_button("✅ Guardar en historial",use_container_width=True):
                 if not nota.strip(): st.error("La nota es obligatoria")
@@ -969,8 +890,8 @@ def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
     with st.form("nc"):
         c1,c2=st.columns(2)
-        with c1: nombre=st.text_input("Nombre del edificio *"); contacto=st.text_input("Contacto *"); email=st.text_input("Email")
-        with c2: direccion=st.text_input("Dirección"); drive_url=st.text_input("Link Drive")
+        with c1: nombre=st.text_input("Edificio *"); contacto=st.text_input("Contacto *"); email=st.text_input("Email")
+        with c2: direccion=st.text_input("Dirección *",placeholder="Ej: Calle 94 No 23-17, Bogotá"); drive_url=st.text_input("Link Drive")
         c1,c2,c3=st.columns(3)
         with c1: valor=st.number_input("Valor ($)",min_value=0,value=0,step=1_000_000,format="%d")
         with c2: vig_v=st.number_input("Vigilancia ($/mes)",min_value=0,value=0,step=100_000,format="%d")
@@ -983,48 +904,47 @@ def pg_nueva_cotizacion():
             else:
                 u=st.session_state.user; c24n=valor//24 if valor else 0; c36n=valor//36 if valor else 0
                 hist_ini=json.dumps([{"fecha":datetime.now().strftime("%d %b %Y %H:%M"),"estado":estado,"nota":notas or "Creado","usuario":u["nombre"],"ts":datetime.now().isoformat()}],ensure_ascii=False)
-                add_proy({"id":int(datetime.now().timestamp()),"nombre":nombre.upper(),"comercial":u["comercial"],"contacto":contacto,"email":email,"totalNum":valor,"c24Num":c24n,"c36Num":c36n,"vig":str(vig_v),"vigH":vig_h,"estado":estado,"etapaOrig":estado,"notas":notas,"lastUpdate":datetime.now().isoformat(),"lastNote":notas[:100],"fecha":datetime.now().strftime("%d %b %Y"),"drive":drive_url,"historial":hist_ini,"encuesta":"{}","novedad":""})
-                st.success(f"✅ **{nombre}** guardado — {fc(valor)}"); st.balloons()
+                add_proy({"id":int(datetime.now().timestamp()),"nombre":nombre.upper(),"comercial":u["comercial"],"contacto":contacto,"email":email,"totalNum":valor,"c24Num":c24n,"c36Num":c36n,"total":cop(valor),"cuota24":cop(c24n),"cuota36":cop(c36n),"vig":str(vig_v),"vigH":vig_h,"estado":estado,"etapaOrig":estado,"notas":notas,"lastNote":notas[:100],"lastUpdate":datetime.now().isoformat()[:10],"fecha":datetime.now().strftime("%Y-%m-%d"),"drive":drive_url,"direccion":direccion,"historial":hist_ini,"encuesta":"{}","novedad":""})
+                st.success(f"✅ **{nombre}** guardado — {cop(valor)}"); st.balloons()
 
 def pg_correos():
-    hdr("✉️","Correos IA","Genera correos comerciales personalizados")
+    hdr("✉️","Correos IA","Personalizados por edificio")
     df=mis_proyectos()
-    if not ai_activa(): st.markdown('<div class="al amber"><div class="al-ic">⚠️</div><div><strong>IA no configurada.</strong> Ve a ⚙️ Configuración.</div></div>',unsafe_allow_html=True)
+    if not ai_ok(): st.markdown('<div class="al amber"><div>⚠️</div><div><strong>IA no configurada.</strong> Ve a ⚙️ Configuración.</div></div>',unsafe_allow_html=True)
     c1,c2=st.columns(2)
     with c1:
         edif=st.selectbox("Edificio",["— Seleccionar —"]+sorted(df["nombre"].dropna().unique().tolist()))
-        tipo=st.selectbox("Tipo de correo",["Primera presentación","Seguimiento post-reunión","Urgencia — asamblea próxima","Objeción: precio alto","Objeción: adultos mayores","Reactivación — stand-by vigilancia","Propuesta visita Alto 61","Confirmación contrato"])
-        ctx_e=st.text_area("Contexto",height=80,placeholder="Ej: El cliente pregunta por adultos mayores...")
-        if st.button("🤖 Generar correo",use_container_width=True):
+        tipo=st.selectbox("Tipo",["Primera presentación","Seguimiento post-reunión","Urgencia — asamblea próxima","Objeción: precio alto","Objeción: adultos mayores","Reactivación — stand-by vigilancia","Propuesta visita Alto 61","Confirmación contrato"])
+        ctx_e=st.text_area("Contexto",height=70,placeholder="Ej: El cliente pregunta por adultos mayores...")
+        if st.button("🤖 Generar",use_container_width=True):
             if edif=="— Seleccionar —": st.warning("Selecciona un edificio")
-            elif not ai_activa(): st.error("Activa IA en ⚙️ Configuración")
+            elif not ai_ok(): st.error("Activa IA en ⚙️ Configuración")
             else:
                 r=df[df["nombre"]==edif].iloc[0]; tn=int(r.get("totalNum",0) or 0); vig=int(r.get("vig",0) or 0)
-                prompt=f"""Correo "{tipo}" para Ágora Tech Colombia.
-Edificio: {edif} | Valor: {fc(tn)} | Cuota 36m: {fc(int(r.get("c36Num",0) or 0))} | Vigilancia: {fc(vig)}/mes hasta {r.get("vigH","")}
-{"Ahorro anual: "+fc(vig*12)+" vs cuota 36m: "+fc(int(r.get("c36Num",0) or 0)*12) if vig>0 else ""}
+                with st.spinner("..."): correo=ask_ai(f"""Correo "{tipo}" para Ágora Tech Colombia.
+Edificio: {edif} | Valor: {cop(tn)} | Cuota 36m: {cop(int(r.get("c36Num",0) or 0))} | Vigilancia: {cop(vig)}/mes hasta {r.get("vigH","")}
+{"Ahorro anual: "+cop(vig*12)+" vs cuota anual 36m: "+cop(int(r.get("c36Num",0) or 0)*12) if vig>0 else ""}
 {f"Contexto: {ctx_e}" if ctx_e else ""}
-Primera línea: ASUNTO: [asunto llamativo]. Financiamiento 100% sin entrada. PIN físico con relieve para adultos mayores. Referencia: Alto 61.
-Firma: {st.session_state.user["nombre"]} — Ágora Tech | (+57) 315 101 7511. Texto plano."""
-                with st.spinner("..."): correo=ask_ai(prompt)
+Primera línea: ASUNTO: [asunto llamativo]. Financiamiento 100% sin entrada sin intereses. PIN físico con relieve para adultos mayores. Referencia: edificio Alto 61.
+Firma: {st.session_state.user["nombre"]} — Ágora Tech | (+57) 315 101 7511. Texto plano.""")
                 st.session_state.correo=correo
     with c2:
         st.markdown("**Vista previa:**")
         correo=st.session_state.get("correo","")
         if correo:
-            st.markdown(f'<div style="background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:10px;padding:18px;font-family:monospace;font-size:12.5px;line-height:1.75;white-space:pre-wrap;color:#0F172A;max-height:420px;overflow-y:auto">{correo.replace("<","&lt;").replace(">","&gt;")}</div>',unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#F8FAFC;border:1.5px solid #E2E8F0;border-radius:10px;padding:16px;font-family:monospace;font-size:12px;line-height:1.75;white-space:pre-wrap;color:#0F172A;max-height:400px;overflow-y:auto">{correo.replace("<","&lt;").replace(">","&gt;")}</div>',unsafe_allow_html=True)
             st.download_button("📋 Descargar",data=correo,file_name=f"correo_{edif[:20]}.txt",mime="text/plain")
         else:
             st.markdown('<div style="background:#F8FAFC;border:1.5px dashed #CBD5E1;border-radius:10px;padding:40px;text-align:center;color:#94A3B8;font-size:13px">Selecciona edificio y genera el correo</div>',unsafe_allow_html=True)
 
 def pg_asistente():
     hdr("🤖","Asistente IA","Pipeline, cierres, objeciones")
-    if not ai_activa(): st.markdown('<div class="al amber"><div class="al-ic">⚠️</div><div>IA no configurada. Ve a ⚙️.</div></div>',unsafe_allow_html=True); return
-    df=mis_proyectos(); ctx=df.to_string(max_rows=127) if not df.empty else ""
+    if not ai_ok(): st.markdown('<div class="al amber"><div>⚠️</div><div>IA no configurada. Ve a ⚙️.</div></div>',unsafe_allow_html=True); return
+    df=mis_proyectos(); ctx=df.to_string(max_rows=140) if not df.empty else ""
     for msg in st.session_state.messages:
         st.markdown(f'<div class="{"chat-u" if msg["role"]=="user" else "chat-a"}">{"👤 " if msg["role"]=="user" else "🤖 "}{msg["content"]}</div>',unsafe_allow_html=True)
     if not st.session_state.messages:
-        sugs=["📊 Resumen ejecutivo del pipeline","⚡ Top 8 proyectos más cercanos al cierre","📈 Estrategia para Country 136 y Park 104","👴 Responder objeción adultos mayores","💰 Edificios stand-by: plan de reactivación","🔍 Diagnóstico: por qué 0 contratos en 6 meses"]
+        sugs=["📊 Resumen ejecutivo del pipeline","⚡ Top 8 proyectos más cercanos al cierre","📈 Estrategia Country 136 y Park 104","👴 Responder objeción adultos mayores","💰 Plan reactivación stand-by vigilancia sep","🔍 Diagnóstico: por qué 0 contratos en 6 meses"]
         cols=st.columns(3)
         for i,s in enumerate(sugs):
             if cols[i%3].button(s,key=f"s_{i}"):
@@ -1055,25 +975,22 @@ def pg_encuesta():
         with c1: vig=st.radio("¿Tiene vigilancia?",["Sí","No"],horizontal=True)
         with c2: costo_v=st.number_input("Costo/mes ($)",min_value=0,value=0,step=100_000,format="%d")
         with c3: vig_h=st.text_input("Hasta cuándo",placeholder="Nov 2026")
-        adultos=st.text_area("Adultos mayores / Discapacidad",height=70)
-        incidentes=st.text_area("Incidentes de seguridad",height=70)
-        terminos=st.text_area("Términos de selección",height=60)
+        adultos=st.text_area("Adultos mayores / Discapacidad",height=60)
+        incidentes=st.text_area("Incidentes de seguridad",height=60)
         analizar=st.checkbox("🤖 Analizar con IA",value=True)
-        if st.form_submit_button("💾 Guardar encuesta",use_container_width=True):
+        if st.form_submit_button("💾 Guardar",use_container_width=True):
             if not nom_e: st.error("Nombre obligatorio"); st.stop()
-            datos={"Edificio":nom_e,"Contacto":contacto,"Rol":rol,"Vigilancia":vig,"Costo Vig":fc(costo_v) if costo_v else "No","Vigencia":vig_h,"Adultos":adultos,"Incidentes":incidentes,"Términos":terminos}
             if edif_sel!="— Nuevo —":
+                datos={"Edificio":nom_e,"Contacto":contacto,"Rol":rol,"Vigilancia":vig,"Costo Vig":cop(costo_v),"Vigencia":vig_h,"Adultos":adultos,"Incidentes":incidentes}
                 update_proy(edif_sel,{"encuesta":json.dumps(datos,ensure_ascii=False)})
-                agregar_historial(edif_sel,"cotizado",f"Encuesta completada. {rol}: {contacto}. Etapa: {etapa_d}.",st.session_state.user["nombre"])
+                agregar_historial(edif_sel,"evaluacion_consejo",f"Encuesta completada. {rol}: {contacto}. Etapa: {etapa_d}.",st.session_state.user["nombre"])
                 st.success(f"✅ Encuesta guardada en {edif_sel}")
-            if analizar and ai_activa():
-                prompt=f"""Analiza prospecto Ágora Tech:
+            if analizar and ai_ok():
+                with st.spinner("..."): r=ask_ai(f"""Analiza prospecto Ágora Tech:
 Edificio: {nom_e} | {rol}: {contacto} | Etapa: {etapa_d}
-Vigilancia: {"SÍ "+fc(costo_v)+"/mes hasta "+vig_h if vig=="Sí" and costo_v>0 else "NO"}
+Vigilancia: {"SÍ "+cop(costo_v)+"/mes hasta "+vig_h if vig=="Sí" and costo_v>0 else "NO"}
 Adultos: {adultos or "No reportado"} | Incidentes: {incidentes or "Ninguno"}
-## VIABILIDAD ## ESTRATEGIA ## OBJECIONES ## {"AHORRO: "+fc(costo_v)+" vigilancia vs "+fc(costo_v)+" cuota si la cuota fuera similar" if costo_v>0 else ""} ## PRÓXIMOS 3 PASOS
-Negrilla en datos clave."""
-                with st.spinner("..."): r=ask_ai(prompt)
+## VIABILIDAD ## ESTRATEGIA ## OBJECIONES PROBABLES ## PRÓXIMOS 3 PASOS""")
                 st.markdown("---"); st.markdown(r)
 
 def pg_calendario():
@@ -1082,27 +999,36 @@ def pg_calendario():
     with c1:
         with st.form("cal_f"):
             c1i,c2i=st.columns(2)
-            with c1i: edif=st.text_input("Edificio"); tipo=st.selectbox("Tipo",["Reunión consejo","Asamblea","Llamada","Visita técnica","Visita Alto 61","Firma contrato","Inicio obra","Entrega","Otro"])
+            with c1i: edif=st.text_input("Edificio"); tipo=st.selectbox("Tipo",["Reunión consejo","Asamblea","Llamada","Visita Alto 61","Firma contrato","Inicio obra","Entrega","Otro"])
             with c2i: fecha_a=st.date_input("Fecha",value=datetime.now()); hora_a=st.time_input("Hora")
-            titulo_a=st.text_input("Título *"); notas_a=st.text_area("Notas",height=60)
+            titulo_a=st.text_input("Título *"); notas_a=st.text_area("Notas",height=55)
             if st.form_submit_button("📅 Guardar",use_container_width=True):
                 if titulo_a: st.success(f"✅ {titulo_a} — {fecha_a.strftime('%d %b')}")
                 else: st.error("Título obligatorio")
     with c2:
         st.markdown("#### 🔥 Próximas semanas")
-        urgentes=[("Country 136","Asamblea jun 27","red"),("Park 104","Asamblea jun 13","red"),("Ed. Risaralda","Asamblea extraordinaria jul","red"),("Ed. Camila","Reunión consejo jun 9","amber"),("Ed. Urapanes","Reunión consejo jun 16","amber"),("Ed. El Cerro","Visita Alto 61 jun 11","blue"),("Ed. Avanti","Decisión julio","blue")]
+        urgentes=[("Country 136","Asamblea jun 27","red"),("Park 104","Asamblea jun 13","red"),("Ed. Risaralda","Asamblea extraordinaria jul","red"),("Ed. Sahara","Asamblea jun 13","amber"),("Ed. Camila","Reunión consejo jun 9","amber"),("Ed. Urapanes","Reunión consejo jun 16","amber"),("Ed. El Cerro","Visita Alto 61 jun 11","blue"),("Ed. Cesanne","Asamblea jul 16","blue")]
         for n,d,c in urgentes:
             ic={"red":"🔥","amber":"🟡","blue":"💡"}[c]
-            st.markdown(f'<div class="al {c}" style="padding:9px 12px;margin-bottom:6px"><div class="al-ic" style="font-size:14px">{ic}</div><div><strong style="font-size:12px">{n}</strong><div style="font-size:10.5px">{d}</div></div></div>',unsafe_allow_html=True)
+            st.markdown(f'<div class="al {c}" style="padding:8px 11px;margin-bottom:5px"><div style="font-size:13px">{ic}</div><div><strong style="font-size:12px">{n}</strong><div style="font-size:10.5px">{d}</div></div></div>',unsafe_allow_html=True)
 
 def pg_configuracion():
-    u=st.session_state.user; es_g=u["rol"]=="gerente"; ai_ok=ai_activa()
-    hdr("⚙️","Configuración","Activar IA — para todos los usuarios")
-    if ai_ok:
-        k=get_ai_key()
-        st.markdown(f'<div class="al green"><div class="al-ic">✅</div><div><strong>IA Groq activa</strong> — Llama 3.3 70B · ...{k[-4:]}</div></div>',unsafe_allow_html=True)
+    u=st.session_state.user; es_g=u["rol"]=="gerente"
+    hdr("⚙️","Configuración","IA + conexión Sheet")
+    if ai_ok():
+        k=get_key()
+        st.markdown(f'<div class="al green"><div>✅</div><div><strong>IA Groq activa</strong> — Llama 3.3 70B · ...{k[-4:]}</div></div>',unsafe_allow_html=True)
     else:
-        st.markdown('<div class="al red"><div class="al-ic">🔴</div><div><strong>IA no configurada.</strong></div></div>',unsafe_allow_html=True)
+        st.markdown('<div class="al red"><div>🔴</div><div><strong>IA no configurada.</strong></div></div>',unsafe_allow_html=True)
+
+    # Estado del Sheet
+    sheet_ok=st.session_state.get("sheet_ok",False)
+    status=st.session_state.get("sheet_status","No verificado")
+    st.markdown(f'<div class="al {"green" if sheet_ok else "amber"}"><div>{"✅" if sheet_ok else "⚠️"}</div><div><strong>Google Sheet:</strong> {status}</div></div>',unsafe_allow_html=True)
+
+    if st.button("🔄 Forzar sincronización con Sheet",use_container_width=True):
+        refrescar_sheet(); st.rerun()
+
     with st.form("cfg"):
         nueva_key=st.text_input("API Key de Groq",placeholder="gsk_...",type="password")
         if nueva_key:
@@ -1113,24 +1039,27 @@ def pg_configuracion():
             if nueva_key:
                 with st.spinner("Verificando..."): ok=activar_ia(nueva_key)
                 if ok: st.success("✅ IA activada"); st.rerun()
+
     if es_g:
         st.markdown("---")
-        st.markdown("Configuración permanente en **Streamlit Cloud → ⋮ → Settings → Secrets**:")
+        st.markdown("**Configuración permanente en Streamlit Cloud → ⋮ → Settings → Secrets:**")
         st.code('GROQ_API_KEY = "gsk_tu-key"',language="toml")
-        df=get_crm(); usuarios=get_usuarios()
+        st.markdown("---")
+        df=get_crm()
         c1,c2,c3,c4=st.columns(4)
-        c1.metric("Proyectos",df.shape[0]); c2.metric("Con cotización",df[df["totalNum"]>0].shape[0])
-        c3.metric("Usuarios",sum(1 for uu in usuarios.values() if uu.get("activo",True)))
-        c4.metric("IA","🟢 Activa" if ai_ok else "🔴 Inactiva")
+        c1.metric("Proyectos en CRM",len(df))
+        c2.metric("En evaluación",len(df[df["estado"]=="evaluacion_consejo"]))
+        c3.metric("Stand-by",len(df[df["estado"]=="aprobado_espera"]))
+        c4.metric("IA","🟢 Activa" if ai_ok() else "🔴 Inactiva")
 
 def pg_auditoria():
-    hdr("🔍","Auditoría","Análisis profundo del equipo")
+    hdr("🔍","Auditoría","Análisis del equipo y pipeline")
     df=get_crm()
     c1,c2,c3,c4,c5=st.columns(5)
-    c1.metric("Total",df.shape[0]); c2.metric("Pipeline",fc(int(df["totalNum"].sum())))
-    c3.metric("Cotizaciones",df[df["estado"]=="cotizado"].shape[0])
-    c4.metric("Perdidos",df[df["estado"]=="perdido"].shape[0]); c5.metric("Contratos",df[df["estado"]=="cerrado"].shape[0])
-    st.markdown('<div class="al red"><div class="al-ic">❗</div><div><strong>0 contratos cerrados.</strong> El cuello de botella está en el cierre en asamblea, no en la prospección.</div></div>',unsafe_allow_html=True)
+    c1.metric("Total",len(df)); c2.metric("Pipeline",cop(int(df["totalNum"].sum())))
+    c3.metric("En evaluación",len(df[df["estado"]=="evaluacion_consejo"]))
+    c4.metric("Perdidos",len(df[df["estado"]=="perdido"])); c5.metric("Contratos",len(df[df["estado"]=="cerrado"]))
+    st.markdown('<div class="al red"><div>❗</div><div><strong>0 contratos cerrados.</strong> El cuello de botella está en el cierre en asamblea. El proceso de "evaluación consejo → asamblea" es la etapa más larga y donde se pierde el 70%.</div></div>',unsafe_allow_html=True)
     c1,c2=st.columns(2)
     with c1:
         res=df[df["totalNum"]>0].groupby("comercial").agg(n=("totalNum","count"),pip=("totalNum","sum")).reset_index()
@@ -1138,22 +1067,22 @@ def pg_auditoria():
         st.dataframe(res[["comercial","n","$M"]].rename(columns={"comercial":"Comercial","n":"Cotiz."}),use_container_width=True,hide_index=True)
     with c2:
         if st.button("🤖 Diagnóstico estratégico",use_container_width=True):
-            with st.spinner(): r=ask_ai("Top 8 proyectos más cercanos al cierre con acción concreta. Por qué 0 contratos. Plan 7 días.",df.to_string(max_rows=127))
+            with st.spinner(): r=ask_ai("Top 8 proyectos más cercanos al cierre con acción concreta. Por qué 0 contratos. Plan 7 días.",df.to_string(max_rows=140))
             st.markdown(r)
 
 def pg_pipeline():
     hdr("🎯","Pipeline Kanban","Embudo por etapas")
     df=mis_proyectos()
-    etapas_k=[("lead","🔵 Lead"),("cotizado","🟡 Cotización"),("negociacion","🟠 Negociando"),("aprobado_espera","🔒 Stand-by"),("cerrado","✅ Cerrado")]
-    cols=st.columns(5)
+    etapas_k=[("lead","🔵 Lead"),("cotizado","🟡 Contacto frío"),("evaluacion_consejo","🟠 En evaluación"),("negociacion","🔥 Negociando"),("aprobado_espera","🔒 Stand-by"),("cerrado","✅ Cerrado")]
+    cols=st.columns(6)
     for i,(k,lbl) in enumerate(etapas_k):
         items=df[df["estado"]==k]; tot=int(items["totalNum"].sum())
         with cols[i]:
-            st.markdown(f"**{lbl}**")
-            st.markdown(f'<div style="font-size:10.5px;color:#94A3B8;margin-bottom:10px">{len(items)} · {fc(tot)}</div>',unsafe_allow_html=True)
+            color=ETAPAS.get(k,{"dot":"#94A3B8"})["dot"]
+            st.markdown(f'<div style="font-size:11.5px;font-weight:700;color:{color};margin-bottom:4px">{lbl}</div><div style="font-size:10px;color:#94A3B8;margin-bottom:8px">{len(items)} · {cop(tot)}</div>',unsafe_allow_html=True)
             for _,r in items.iterrows():
                 tn=int(r.get("totalNum",0) or 0)
-                st.markdown(f'<div style="background:white;border:1px solid #E2E8F0;border-radius:7px;padding:9px;margin-bottom:6px"><div style="font-family:Space Grotesk,sans-serif;font-size:11.5px;font-weight:600;color:#0F172A;margin-bottom:1px">{str(r["nombre"])[:22]}</div><div style="font-size:10px;color:#94A3B8;margin-bottom:3px">{str(r.get("comercial","—")).split()[0]}</div><div style="font-family:Space Grotesk,sans-serif;font-size:12.5px;font-weight:700;color:#059669">{fc(tn) if tn else "—"}</div></div>',unsafe_allow_html=True)
+                st.markdown(f'<div style="background:white;border:1px solid #E2E8F0;border-radius:7px;padding:8px;margin-bottom:5px"><div style="font-size:11px;font-weight:600;color:#0F172A">{str(r["nombre"])[:22]}</div><div style="font-size:9.5px;color:#94A3B8;margin:1px 0">{str(r.get("comercial","—")).split()[0]}</div><div style="font-size:11.5px;font-weight:700;color:#059669">{cop(tn) if tn else "—"}</div></div>',unsafe_allow_html=True)
 
 def pg_usuarios():
     hdr("👥","Usuarios","Administrar accesos")
@@ -1171,7 +1100,7 @@ def pg_usuarios():
     eu=st.session_state.get("eu","")
     if eu and eu in usuarios:
         ud_e=usuarios[eu]
-        with st.form("eu_f"):
+        with st.form("euf"):
             st.markdown(f"**Editando: {ud_e['nombre']}**")
             c1,c2=st.columns(2)
             with c1: nn=st.text_input("Nombre",value=ud_e["nombre"]); np=st.text_input("Nueva contraseña",type="password")
@@ -1183,7 +1112,7 @@ def pg_usuarios():
                 if np: st.session_state.usuarios_db[eu]["pass"]=np
                 st.success("✅ Actualizado"); st.session_state.pop("eu",None); st.rerun()
     st.markdown("---")
-    with st.form("au_f"):
+    with st.form("auf"):
         st.markdown("**➕ Nuevo usuario**")
         c1,c2=st.columns(2)
         with c1: nu=st.text_input("Usuario *"); nn2=st.text_input("Nombre *"); np2=st.text_input("Contraseña *",type="password")
@@ -1195,21 +1124,268 @@ def pg_usuarios():
                 st.session_state.usuarios_db[nu.lower()]={"pass":np2,"nombre":nn2,"rol":nr2,"comercial":nc2,"activo":True}
                 st.success(f"✅ {nu} creado"); st.rerun()
 
-# ══════════════════════════════════════════════════════════════
+
+# ══════════════════════════════════════════
+# MAPA DE BOGOTÁ — PROYECTOS
+# ══════════════════════════════════════════
+
+# Coordenadas conocidas de los proyectos (obtenidas de PDFs Drive + geocodificación)
+COORDS_CONOCIDAS = {
+    # Desde PDFs de ofertas
+    "EDIFICIO URAPANES":         {"lat": 4.6546, "lng": -74.0604, "dir": "Calle 63 No 20-40"},
+    "EDIFICIO ARCADIA":          {"lat": 4.6783, "lng": -74.0487, "dir": "Calle 94 No 23-17"},
+    "EDIFICIO RISARALDA":        {"lat": 4.6921, "lng": -74.0557, "dir": "Carrera 12 #91-15"},
+    "EDIFICIO BEN HUR":          {"lat": 4.5812, "lng": -74.1512, "dir": "Calle 49 Sur #78-62"},
+    "ESTUDIO 84":                {"lat": 4.6774, "lng": -74.0468, "dir": "Transversal 3 #84a-35"},
+    "COUNTRY 136":               {"lat": 4.7285, "lng": -74.0437, "dir": "Av. 15 #135-41"},
+    # Geocodificación por barrio/sector conocido
+    "EDIFICIO CASTILLA":         {"lat": 4.6762, "lng": -74.0541, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO SAHARA":           {"lat": 4.6651, "lng": -74.0582, "dir": "Teusaquillo, Bogotá"},
+    "PARK 104":                  {"lat": 4.6915, "lng": -74.0498, "dir": "Cra 15 #104, Bogotá"},
+    "EDIFICIO FERROL":           {"lat": 4.6589, "lng": -74.0621, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO LOS PINOS":        {"lat": 4.6702, "lng": -74.0533, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO AVANTI":           {"lat": 4.6558, "lng": -74.0599, "dir": "Teusaquillo, Bogotá"},
+    "EDIFICIO EL CERRO":         {"lat": 4.6481, "lng": -74.0641, "dir": "Bogotá"},
+    "EDIFICIO ALTOS DEL RETIRO": {"lat": 4.6635, "lng": -74.0527, "dir": "El Retiro, Bogotá"},
+    "EDIFICIO CAMILA":           {"lat": 4.6728, "lng": -74.0501, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO NOMAD":            {"lat": 4.6741, "lng": -74.0512, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO CESANNE":          {"lat": 4.6955, "lng": -74.0503, "dir": "Usaquén, Bogotá"},
+    "TORRE DEL PARQUE":          {"lat": 4.6998, "lng": -74.0489, "dir": "Usaquén, Bogotá"},
+    "EDIFICIO BARCELONA":        {"lat": 4.6641, "lng": -74.0569, "dir": "Bogotá"},
+    "EDIFICIO PLAZA 47":         {"lat": 4.6631, "lng": -74.0579, "dir": "Bogotá"},
+    "EDIFICIO HUNZA":            {"lat": 4.6679, "lng": -74.0551, "dir": "Bogotá"},
+    "EDIFICIO RITACUBA":         {"lat": 4.6698, "lng": -74.0541, "dir": "Bogotá"},
+    "EL PINO":                   {"lat": 4.6611, "lng": -74.0594, "dir": "Bogotá"},
+    "TERRACINO 93":              {"lat": 4.6812, "lng": -74.0477, "dir": "Bogotá"},
+    "OPORTO CHICO":              {"lat": 4.6799, "lng": -74.0488, "dir": "Bogotá"},
+    "EDIFICIO FONTIBON":         {"lat": 4.6544, "lng": -74.1431, "dir": "Fontibón, Bogotá"},
+    "EDIFICIO LABRADOR":         {"lat": 4.6621, "lng": -74.0571, "dir": "Bogotá"},
+    "EL FONTANAR":               {"lat": 4.6633, "lng": -74.0563, "dir": "Bogotá"},
+    "TIARA":                     {"lat": 4.6722, "lng": -74.0519, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO LA CANDELARIA":    {"lat": 4.5981, "lng": -74.0762, "dir": "La Candelaria, Bogotá"},
+    "EDIFICIO REYES III Y IV":   {"lat": 4.6744, "lng": -74.0508, "dir": "Bogotá"},
+    "EDIFICIO TORRE CARRARA":    {"lat": 4.6721, "lng": -74.0522, "dir": "Bogotá"},
+    "ARGOS":                     {"lat": 4.6631, "lng": -74.0578, "dir": "Bogotá"},
+    "EDIFICIO SAMORE":           {"lat": 4.6618, "lng": -74.0589, "dir": "Bogotá"},
+    "SUITES GOLD":               {"lat": 4.6801, "lng": -74.0481, "dir": "Bogotá"},
+    "MÁLAGA":                    {"lat": 4.6715, "lng": -74.0528, "dir": "Chapinero, Bogotá"},
+    "TORRE 94":                  {"lat": 4.6841, "lng": -74.0462, "dir": "Cra 15 #94, Bogotá"},
+    "EDIFICIO TULIPANES":        {"lat": 4.6759, "lng": -74.0499, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO ALTO ARAGÓN":      {"lat": 4.6788, "lng": -74.0491, "dir": "Bogotá"},
+    "EDIFICIO NEPTUNO":          {"lat": 4.6658, "lng": -74.0561, "dir": "Bogotá"},
+    "EDIFICIO LOS ANDES":        {"lat": 4.6621, "lng": -74.0577, "dir": "Bogotá"},
+    "PARK 104":                  {"lat": 4.6918, "lng": -74.0493, "dir": "Calle 104, Bogotá"},
+    "EDIFICIO ANCHICAYA":        {"lat": 4.6698, "lng": -74.0541, "dir": "Bogotá"},
+    "EDIFICIO SANTA ISABEL":     {"lat": 4.6141, "lng": -74.1012, "dir": "Bosa, Bogotá"},
+    "EDIFICIO ARBOLEDA PARK":    {"lat": 4.6551, "lng": -74.1421, "dir": "Fontibón, Bogotá"},
+    "EDIFICIO CYAN 26":          {"lat": 4.6302, "lng": -74.0831, "dir": "Kennedy, Bogotá"},
+    "BULEVAR":                   {"lat": 4.6921, "lng": -74.0501, "dir": "Usaquén, Bogotá"},
+    "EDIFICIO ARAUCARIA":        {"lat": 4.6761, "lng": -74.0501, "dir": "Chapinero, Bogotá"},
+    "EDIFICIO CALLE 67":         {"lat": 4.6631, "lng": -74.0580, "dir": "Calle 67, Bogotá"},
+    "OLIVAR":                    {"lat": 4.6641, "lng": -74.0572, "dir": "Bogotá"},
+    "ELITE":                     {"lat": 4.6651, "lng": -74.0563, "dir": "Bogotá"},
+    "EDIFICIO CAPIRO":           {"lat": 4.6551, "lng": -74.0651, "dir": "Bogotá"},
+    "EDIFICIO LUMINA":           {"lat": 4.6561, "lng": -74.0641, "dir": "Bogotá"},
+    "SANTA VIVIANA":             {"lat": 4.6451, "lng": -74.0741, "dir": "Bogotá"},
+    "EDIFICIO CALLE 58":         {"lat": 4.6419, "lng": -74.0781, "dir": "Calle 58, Bogotá"},
+    "EDIFICIO GUAYACAN":         {"lat": 4.6501, "lng": -74.0701, "dir": "Bogotá"},
+    "EDIFICIO CALIFORNIA ANTIGUA":{"lat": 4.6481, "lng": -74.0721, "dir": "Bogotá"},
+    "EDIFICIO TRÍPOLI":          {"lat": 4.6471, "lng": -74.0731, "dir": "Bogotá"},
+    "EDIFICIO YAKARTA":          {"lat": 4.6461, "lng": -74.0741, "dir": "Bogotá"},
+    "EDIFICIO TORRE CHALETS":    {"lat": 4.6441, "lng": -74.0761, "dir": "Bogotá"},
+    # Alto 61 (referencia instalación)
+    "ALTO 61 (Referencia)":      {"lat": 4.6882, "lng": -74.0427, "dir": "Calle 61 #14-25, Bogotá"},
+}
+
+
+def pg_mapa():
+    hdr("🗺️","Mapa de Proyectos","Ubicación de los edificios en Bogotá")
+    df = mis_proyectos()
+
+    # Filtros
+    c1,c2,c3 = st.columns(3)
+    with c1:
+        filtro_estado = st.selectbox("Filtrar por estado", ["Todos"]+ESTADOS_LISTA,
+            format_func=lambda x: ETAPAS.get(x,{"label":x})["label"] if x!="Todos" else "Todos")
+    with c2:
+        if st.session_state.user["rol"]=="gerente":
+            filtro_com = st.selectbox("Comercial",["Todos"]+sorted(df["comercial"].dropna().unique().tolist()))
+        else:
+            filtro_com = "Todos"
+    with c3:
+        mostrar_perdidos = st.checkbox("Mostrar rechazados", value=False)
+
+    # Aplicar filtros
+    df_m = df.copy()
+    if filtro_estado != "Todos": df_m = df_m[df_m["estado"]==filtro_estado]
+    if filtro_com != "Todos": df_m = df_m[df_m["comercial"]==filtro_com]
+    if not mostrar_perdidos: df_m = df_m[df_m["estado"]!="perdido"]
+
+    # Colores por estado
+    COLOR_ESTADO = {
+        "lead":"#3B82F6","cotizado":"#F59E0B","evaluacion_consejo":"#D97706",
+        "negociacion":"#F97316","aprobado_espera":"#0EA5E9","perdido":"#EF4444",
+        "creacion_contrato":"#10B981","financiacion":"#10B981","obra":"#059669",
+        "novedades_obra":"#D97706","entrega":"#059669","mantenimiento":"#6366F1","cerrado":"#059669"
+    }
+    ICON_ESTADO = {
+        "lead":"🔵","cotizado":"🟡","evaluacion_consejo":"🟠","negociacion":"🔥",
+        "aprobado_espera":"🔒","perdido":"❌","creacion_contrato":"📝",
+        "financiacion":"💰","obra":"🔨","cerrado":"✅"
+    }
+
+    # Construir marcadores
+    marcadores = []
+    sin_dir = []
+    for _, r in df_m.iterrows():
+        nombre = str(r["nombre"]).strip().upper()
+        # Buscar en coords conocidas
+        coords = COORDS_CONOCIDAS.get(nombre)
+        # Buscar coincidencia parcial si no hay exacta
+        if not coords:
+            for k,v in COORDS_CONOCIDAS.items():
+                if k in nombre or nombre in k:
+                    coords = v
+                    break
+        # Si tiene dirección en el Sheet
+        dir_sheet = str(r.get("direccion","") or "").strip()
+        if dir_sheet and dir_sheet.lower() not in ["nan",""]:
+            dir_display = dir_sheet
+        elif coords:
+            dir_display = coords.get("dir","Bogotá")
+        else:
+            dir_display = "Dirección no registrada"
+            sin_dir.append(nombre)
+
+        if coords:
+            est = str(r.get("estado","lead"))
+            tn = int(r.get("totalNum",0) or 0)
+            nota = str(r.get("lastNote","") or r.get("notas","") or "")[:80]
+            com = str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"
+            color = COLOR_ESTADO.get(est,"#94A3B8")
+            icon = ICON_ESTADO.get(est,"📍")
+            marcadores.append({
+                "lat": coords["lat"], "lng": coords["lng"],
+                "nombre": nombre, "estado": est,
+                "color": color, "icon": icon,
+                "dir": dir_display, "valor": tn,
+                "comercial": com, "nota": nota,
+                "label": ETAPAS.get(est,{"label":est})["label"]
+            })
+
+    total_mapa = len(marcadores)
+    st.markdown(f'<div style="font-size:12px;color:#94A3B8;margin-bottom:12px">{total_mapa} proyectos en el mapa · {len(sin_dir)} sin ubicación registrada</div>',unsafe_allow_html=True)
+
+    if not marcadores:
+        st.info("No hay proyectos con coordenadas para los filtros seleccionados.")
+        return
+
+    # Generar HTML del mapa con Leaflet (OpenStreetMap — gratis, sin API key)
+    markers_js = ""
+    for m in marcadores:
+        popup = (f"<div style='font-family:Inter,sans-serif;min-width:180px'>"
+                 f"<div style='font-weight:700;font-size:13px;color:#0F172A;margin-bottom:4px'>{m['icon']} {m['nombre']}</div>"
+                 f"<div style='font-size:11px;color:#2563EB;margin-bottom:3px'>{m['label']}</div>"
+                 f"<div style='font-size:11px;color:#64748B;margin-bottom:2px'>📍 {m['dir']}</div>"
+                 f"<div style='font-size:11px;color:#64748B;margin-bottom:2px'>👤 {m['comercial']}</div>"
+                 f"{'<div style=&quot;font-size:11px;color:#64748B;margin-bottom:2px&quot;>💰 '+cop(m['valor'])+'</div>' if m['valor'] else ''}"
+                 f"{'<div style=&quot;font-size:10.5px;color:#94A3B8;margin-top:4px&quot;>'+m['nota']+'</div>' if m['nota'] else ''}"
+                 f"</div>")
+        markers_js += f"""
+        L.circleMarker([{m['lat']}, {m['lng']}], {{
+            radius: 9,
+            fillColor: '{m['color']}',
+            color: 'white',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.9
+        }}).bindPopup(`{popup}`).addTo(map);
+        """
+
+    # Referencia Alto 61
+    alto61 = COORDS_CONOCIDAS["ALTO 61 (Referencia)"]
+    markers_js += f"""
+    L.marker([{alto61['lat']}, {alto61['lng']}], {{
+        icon: L.divIcon({{
+            html: '<div style="background:#0D9488;color:white;font-size:9px;font-weight:700;padding:3px 6px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">⭐ ALTO 61</div>',
+            iconAnchor: [30, 10]
+        }})
+    }}).addTo(map);
+    """
+
+    mapa_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  body{{margin:0;padding:0;font-family:Inter,sans-serif}}
+  #map{{height:560px;width:100%;border-radius:12px}}
+  .leaflet-popup-content-wrapper{{border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15)}}
+  .leaflet-popup-content{{margin:10px 14px}}
+  /* Leyenda */
+  .leyenda{{background:white;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:1.9}}
+  .leyenda h4{{margin:0 0 6px;font-size:11.5px;font-weight:700;color:#0F172A}}
+  .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+  var map = L.map('map').setView([4.6722, -74.0538], 12);
+  L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 18
+  }}).addTo(map);
+
+  {markers_js}
+
+  // Leyenda
+  var legend = L.control({{position: 'bottomright'}});
+  legend.onAdd = function(map) {{
+    var div = L.DomUtil.create('div', 'leyenda');
+    div.innerHTML = '<h4>Estado del proyecto</h4>' +
+      '<span class="dot" style="background:#D97706"></span>En evaluación/Consejo<br>' +
+      '<span class="dot" style="background:#F59E0B"></span>Contacto frío<br>' +
+      '<span class="dot" style="background:#F97316"></span>Negociando<br>' +
+      '<span class="dot" style="background:#0EA5E9"></span>Stand-by Vigilancia<br>' +
+      '<span class="dot" style="background:#EF4444"></span>Perdido<br>' +
+      '<span class="dot" style="background:#059669"></span>Cerrado/Obra';
+    return div;
+  }};
+  legend.addTo(map);
+</script>
+</body>
+</html>"""
+
+    st.components.v1.html(mapa_html, height=580, scrolling=False)
+
+    # Sin dirección
+    if sin_dir:
+        with st.expander(f"⚠️ {len(sin_dir)} proyectos sin ubicación registrada"):
+            st.markdown("Agrega la dirección en **Nueva Cotización** o directamente en el Google Sheet.")
+            for n in sin_dir:
+                st.markdown(f"- {n}")
+
+    # Tip
+    st.markdown(f'<div class="al blue" style="margin-top:10px"><div>💡</div><div>Haz <strong>clic en cualquier punto</strong> del mapa para ver el detalle. Para agregar direcciones que faltan, edítalas en el Sheet o en <strong>Nueva Cotización</strong>.</div></div>',unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════
 # MAIN
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════
 if not st.session_state.logged_in:
     pg_login()
 else:
     sidebar()
     pg=st.session_state.get("page","Dashboard")
-    pages={
-        "Dashboard":pg_dashboard, "Novedades":pg_novedades,
-        "Proyectos":pg_proyectos, "Actualizar Estado":pg_actualizar,
-        "Nueva Cotización":pg_nueva_cotizacion, "Correos IA":pg_correos,
-        "Asistente IA":pg_asistente, "Encuesta Prospecto":pg_encuesta,
-        "Calendario":pg_calendario, "Configuración":pg_configuracion,
-        "Informe Semanal":pg_informe_semanal, "Pagos y Finanzas":pg_pagos,
-        "Auditoría":pg_auditoria, "Pipeline":pg_pipeline, "Usuarios":pg_usuarios,
-    }
-    pages.get(pg, pg_dashboard)()
+    {
+        "Dashboard":pg_dashboard,"Novedades":pg_novedades,
+        "Proyectos":pg_proyectos,"Actualizar Estado":pg_actualizar,
+        "Nueva Cotización":pg_nueva_cotizacion,"Correos IA":pg_correos,
+        "Asistente IA":pg_asistente,"Encuesta Prospecto":pg_encuesta,
+        "Calendario":pg_calendario,"Configuración":pg_configuracion,
+        "Informe Semanal":pg_informe_semanal,"Pagos y Finanzas":pg_pagos,
+        "Auditoría":pg_auditoria,"Pipeline":pg_pipeline,"Usuarios":pg_usuarios,"Mapa de Proyectos":pg_mapa,
+    }.get(pg,pg_dashboard)()
