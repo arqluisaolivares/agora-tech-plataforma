@@ -60,13 +60,20 @@ html,body,[class*="css"]{font-family:'Inter',sans-serif!important;background:var
 h1,h2,h3{font-family:'Space Grotesk',sans-serif!important}
 
 /* SIDEBAR */
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#0F172A 0%,#0F1E38 100%)!important;border-right:1px solid rgba(255,255,255,.04)!important}
+[data-testid="stSidebar"]{
+  background:#0F172A!important;
+  border-right:1px solid rgba(255,255,255,.05)!important;
+}
 [data-testid="stSidebar"] *{color:rgba(255,255,255,.75)!important}
-/* Eliminar cualquier fondo blanco de botones en sidebar */
-[data-testid="stSidebar"] .stButton>button{
+[data-testid="stSidebar"] .stButton>button,
+[data-testid="stSidebar"] .stButton>button:active,
+[data-testid="stSidebar"] .stButton>button:visited {
   background:transparent!important;
-  color:rgba(255,255,255,.72)!important;
+  background-color:transparent!important;
+  color:rgba(255,255,255,.7)!important;
   border:none!important;
+  border-color:transparent!important;
+  outline:none!important;
   box-shadow:none!important;
   border-radius:6px!important;
   text-align:left!important;
@@ -76,20 +83,33 @@ h1,h2,h3{font-family:'Space Grotesk',sans-serif!important}
   padding:8px 12px!important;
   width:100%!important;
   margin:1px 0!important;
-  transition:background .15s,color .15s!important;
+  transition:background-color .15s!important;
   transform:none!important;
   letter-spacing:0!important;
 }
 [data-testid="stSidebar"] .stButton>button:hover{
-  background:rgba(255,255,255,.09)!important;
+  background-color:rgba(255,255,255,.1)!important;
   color:white!important;
 }
-[data-testid="stSidebar"] .stButton>button p{
-  text-align:left!important;
-  margin:0!important;
-}
 [data-testid="stSidebar"] .stButton>button:focus{
+  background-color:transparent!important;
+  box-shadow:none!important;
   outline:none!important;
+}
+[data-testid="stSidebar"] .stButton>button div,
+[data-testid="stSidebar"] .stButton>button p,
+[data-testid="stSidebar"] .stButton>button span {
+  text-align:left!important;
+  color:inherit!important;
+  background:transparent!important;
+}
+/* Forzar quitar cualquier borde/fondo residual */
+[data-testid="stSidebar"] [data-testid="baseButton-secondary"],
+[data-testid="stSidebar"] [data-testid="baseButton-secondary"]:hover,
+[data-testid="stSidebar"] [data-testid="baseButton-secondary"]:focus {
+  background:transparent!important;
+  background-color:transparent!important;
+  border:none!important;
   box-shadow:none!important;
 }
 
@@ -380,7 +400,7 @@ def hdr(icon,title,sub=""):
 # ══════════════════════════════════════════
 for k,v in {"logged_in":False,"user":None,"page":"Dashboard","messages":[],"crm":None,
             "correo":"","editing":"","vista_estado":None,"sheet_ok":False,"sheet_status":"",
-            "alerta_vista":False,"vista_cierres":False}.items():
+            "vista_cierres":False}.items():
     if k not in st.session_state: st.session_state[k]=v
 
 if not st.session_state.get("groq_key"):
@@ -389,38 +409,6 @@ if not st.session_state.get("groq_key"):
         if k: st.session_state["groq_key"]=k
     except: pass
 
-def mostrar_alerta_critica():
-    """Popup con alertas críticas al iniciar sesión."""
-    if st.session_state.get("alerta_vista"): return
-    df = get_crm()
-    if df.empty: return
-    neg = df[df["estado"]=="negociacion"]
-    # Proyectos sin actualizar más de 14 días (muy urgente)
-    hace_14=(datetime.now()-timedelta(days=14)).isoformat()[:10]
-    sin_14=df[(df["estado"]=="evaluacion_consejo") & (df["lastUpdate"].astype(str).str.strip()<hace_14)]
-    # Solo mostrar si hay algo crítico
-    tiene_critico = len(neg)>0 or len(sin_14)>0
-    if not tiene_critico:
-        st.session_state.alerta_vista=True; return
-    with st.container():
-        st.markdown("""<div style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:9998'></div>""",unsafe_allow_html=True)
-        st.markdown(f"""<div style='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-            background:white;border-radius:16px;padding:28px 32px;width:520px;max-width:90vw;
-            z-index:9999;box-shadow:0 20px 60px rgba(0,0,0,.4)'>
-          <div style='display:flex;align-items:center;gap:12px;margin-bottom:16px'>
-            <div style='width:40px;height:40px;border-radius:10px;background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0'>🚨</div>
-            <div style='font-family:Space Grotesk,sans-serif;font-size:17px;font-weight:700;color:#0F172A'>Alertas críticas de hoy</div>
-          </div>
-          {''.join([f'<div style="background:#FEF2F2;border-left:4px solid #EF4444;border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:8px"><div style="font-size:12.5px;font-weight:700;color:#991B1B">🔥 NEGOCIACIÓN ACTIVA: {r["nombre"]}</div><div style="font-size:11.5px;color:#334155;margin-top:2px">{str(r.get("lastNote",""))[:120]}</div></div>' for _,r in neg.iterrows()])}
-          {''.join([f'<div style="background:#FFFBEB;border-left:4px solid #D97706;border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:8px"><div style="font-size:12.5px;font-weight:700;color:#92400E">⏰ Sin actualizar +14 días: {r["nombre"]}</div><div style="font-size:11.5px;color:#334155;margin-top:2px">{str(r.get("lastNote","Sin nota"))[:100]}</div></div>' for _,r in sin_14.head(3).iterrows()])}
-          <div style='font-size:11px;color:#94A3B8;margin-top:12px'>Haz clic fuera o en el botón para cerrar</div>
-        </div>""",unsafe_allow_html=True)
-    if st.button("✓ Entendido — cerrar alerta",use_container_width=True,key="cerrar_popup"):
-        st.session_state.alerta_vista=True; st.rerun()
-
-# ══════════════════════════════════════════
-# LOGIN
-# ══════════════════════════════════════════
 def pg_login():
     c1,c2,c3=st.columns([1,1.1,1])
     with c2:
@@ -511,6 +499,19 @@ def pg_dashboard():
     sheet_ok=st.session_state.get("sheet_ok",False)
     if not sheet_ok:
         st.markdown('<div class="al amber"><div>⚠️</div><div><strong>Usando datos locales.</strong> El Sheet no está accesible. Haz clic en "🔄 Sincronizar Sheet" en la barra lateral.</div></div>',unsafe_allow_html=True)
+
+    # ALERTAS CRÍTICAS — banner al inicio del dashboard
+    hace_14=(datetime.now()-timedelta(days=14)).isoformat()[:10]
+    neg_alert=df[df["estado"]=="negociacion"]
+    sin_14=df[(df["estado"]=="evaluacion_consejo")&(df["lastUpdate"].astype(str).str.strip()<hace_14)]
+    if len(neg_alert)>0 or len(sin_14)>0:
+        with st.expander("🚨 ALERTAS CRÍTICAS — Expandir para ver",expanded=True):
+            for _,r in neg_alert.iterrows():
+                nota=str(r.get("lastNote","") or r.get("notas",""))[:120]
+                st.markdown(f'<div class="al red"><div>🔥</div><div><strong>NEGOCIACIÓN ACTIVA: {r["nombre"]}</strong><br><small>{nota}</small></div></div>',unsafe_allow_html=True)
+            if len(sin_14)>0:
+                nombres_sin=", ".join(sin_14["nombre"].head(4).tolist())
+                st.markdown(f'<div class="al amber"><div>⏰</div><div><strong>{len(sin_14)} proyectos en evaluación sin actualizar +14 días:</strong> {nombres_sin}{"..." if len(sin_14)>4 else ""}</div></div>',unsafe_allow_html=True)
 
     # Vista filtrada (clic en KPI)
     if st.session_state.get("vista_estado"):
@@ -1612,9 +1613,6 @@ if not st.session_state.logged_in:
     pg_login()
 else:
     sidebar()
-    # Mostrar popup de alertas críticas al primer login de la sesión
-    if not st.session_state.get("alerta_vista"):
-        mostrar_alerta_critica()
     pg=st.session_state.get("page","Dashboard")
     {
         "Dashboard":pg_dashboard,"Novedades":pg_novedades,
