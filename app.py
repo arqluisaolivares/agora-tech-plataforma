@@ -937,35 +937,228 @@ def pg_proyectos():
                 else: st.info("Sin historial. Usa 'Actualizar Estado' para empezar.")
 
 def pg_actualizar():
-    hdr("📝","Actualizar Estado","Se guarda en el historial permanentemente")
-    df=mis_proyectos(); u=st.session_state.user
-    presel=st.session_state.get("editing","")
-    nombres=["— Selecciona —"]+sorted(df["nombre"].dropna().unique().tolist())
-    idx=nombres.index(presel) if presel in nombres else 0
-    sel=st.selectbox("Edificio:",nombres,index=idx)
-    if sel!="— Selecciona —":
-        r=df[df["nombre"]==sel].iloc[0]; est=str(r.get("estado","lead"))
-        c1,c2,c3=st.columns(3)
-        c1.metric("Valor",cop(int(r.get("totalNum",0) or 0)))
-        c2.metric("Estado actual",ETAPAS.get(est,{"label":est})["label"])
-        c3.metric("Actualizado",str(r.get("lastUpdate","Nunca"))[:10] or "Nunca")
-        if str(r.get("lastNote",""))!="nan" and r.get("lastNote"):
-            st.markdown(f'<div class="al blue"><div>📝</div><div>Última nota: {str(r["lastNote"])[:200]}</div></div>',unsafe_allow_html=True)
-        with st.form("uf"):
-            nuevo_e=st.selectbox("Nuevo estado *",ESTADOS_LISTA,format_func=lambda x:ETAPAS.get(x,{"label":x})["label"],index=ESTADOS_LISTA.index(est) if est in ESTADOS_LISTA else 0)
-            nota=st.text_area("Nota * (obligatoria)",placeholder="¿Qué pasó? ¿Próximo paso? ¿Quién respondió?...")
+    hdr("📝","Actualizar Estado e Información","Historial permanente + datos del proyecto")
+    df  = mis_proyectos()
+    u   = st.session_state.user
+    presel  = st.session_state.get("editing","")
+    nombres = ["— Selecciona un edificio —"] + sorted(df["nombre"].dropna().unique().tolist())
+    idx_sel = nombres.index(presel) if presel in nombres else 0
+    sel     = st.selectbox("🏢 Edificio:", nombres, index=idx_sel)
+
+    if sel == "— Selecciona un edificio —":
+        st.info("Selecciona un edificio para actualizar su estado e información.")
+        return
+
+    r   = df[df["nombre"]==sel].iloc[0]
+    est = str(r.get("estado","lead"))
+
+    # ── Tabs: Actualizar estado | Editar información
+    tab_est, tab_info = st.tabs(["📋 Actualizar estado","🏗️ Editar información del proyecto"])
+
+    # ════════════════════════════════
+    # TAB 1 — ACTUALIZAR ESTADO
+    # ════════════════════════════════
+    with tab_est:
+        # Resumen actual
+        tn  = int(r.get("totalNum",0) or 0)
+        c1,c2,c3,c4 = st.columns(4)
+        c1.metric("Valor total",    cop(tn))
+        c2.metric("Cuota 36m",      cop(int(r.get("c36Num",0) or 0)))
+        c3.metric("Estado actual",  ETAPAS.get(est,{"label":est})["label"])
+        c4.metric("Actualizado",    str(r.get("lastUpdate","Nunca"))[:10] or "Nunca")
+
+        nota_actual = str(r.get("lastNote","") or r.get("notas",""))
+        if nota_actual and nota_actual not in ["nan",""]:
+            st.markdown(
+                f'<div class="al blue"><div>📝</div><div><strong>Última nota:</strong> {nota_actual[:250]}</div></div>',
+                unsafe_allow_html=True)
+
+        # Historial rápido
+        try:
+            hist = json.loads(str(r.get("historial","[]") or "[]"))
+        except:
+            hist = []
+        if hist:
+            with st.expander(f"📜 Ver historial ({len(hist)} entradas)"):
+                st.markdown('<div class="tl">', unsafe_allow_html=True)
+                for ev in reversed(hist[-6:]):
+                    dc = ETAPAS.get(ev.get("estado",""),{"dot":"#94A3B8"})["dot"]
+                    st.markdown(
+                        f'<div class="ti"><div class="ti-dot" style="background:{dc}"></div>' +
+                        f'<div class="ti-date">{ev.get("fecha","")} · {ev.get("usuario","")}</div>' +
+                        f'<div class="ti-h">{ETAPAS.get(ev.get("estado",""),{"label":ev.get("estado","")})["label"]}</div>' +
+                        f'<div class="ti-t">{ev.get("nota","")}</div></div>',
+                        unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+        st.markdown("---")
+        with st.form("uf_estado"):
+            nuevo_e = st.selectbox(
+                "Nuevo estado *", ESTADOS_LISTA,
+                format_func=lambda x: ETAPAS.get(x,{"label":x})["label"],
+                index=ESTADOS_LISTA.index(est) if est in ESTADOS_LISTA else 0)
+            nota = st.text_area(
+                "Nota * (obligatoria — qué pasó, próximo paso, quién respondió)",
+                height=100,
+                placeholder="Ej: Hablé con el administrador Juan Pérez. La asamblea es el 16 de julio. Piden cotización actualizada antes del viernes.")
+
+            # Campos adicionales para etapas de ejecución
             if nuevo_e in ["creacion_contrato","financiacion","obra","novedades_obra","entrega","mantenimiento","cerrado"]:
-                c1,c2=st.columns(2)
-                with c1: contrato=st.text_input("N° contrato",placeholder="CT-2026-001"); obra_ini=st.text_input("Inicio obra")
-                with c2: financ=st.text_area("Detalles financiación",height=60); obra_fin=st.text_input("Fin estimado")
-            else: contrato=financ=obra_ini=obra_fin=""
-            if st.form_submit_button("✅ Guardar en historial",use_container_width=True):
-                if not nota.strip(): st.error("La nota es obligatoria")
+                st.markdown("**Datos de ejecución:**")
+                c1,c2 = st.columns(2)
+                with c1:
+                    contrato  = st.text_input("N° contrato", placeholder="CT-2026-001")
+                    obra_ini  = st.text_input("Inicio de obra", placeholder="dd/mm/yyyy")
+                with c2:
+                    financ    = st.text_area("Detalles de financiación", height=60)
+                    obra_fin  = st.text_input("Fin estimado obra", placeholder="dd/mm/yyyy")
+            else:
+                contrato = financ = obra_ini = obra_fin = ""
+
+            if st.form_submit_button("✅ Guardar en historial", use_container_width=True):
+                if not nota.strip():
+                    st.error("La nota es obligatoria — describe qué pasó y cuál es el próximo paso.")
                 else:
-                    agregar_historial(sel,nuevo_e,nota,u["nombre"])
-                    ext={k:v for k,v in {"contrato":contrato,"financiacion_info":financ,"obra_inicio":obra_ini,"obra_fin":obra_fin}.items() if v}
-                    if ext: update_proy(sel,ext)
-                    st.success(f"✅ {sel} → {ETAPAS.get(nuevo_e,{'label':nuevo_e})['label']}"); st.session_state.editing=""; st.rerun()
+                    agregar_historial(sel, nuevo_e, nota, u["nombre"])
+                    ext = {k:v for k,v in {"contrato":contrato,"financiacion_info":financ,
+                                            "obra_inicio":obra_ini,"obra_fin":obra_fin}.items() if v}
+                    if ext: update_proy(sel, ext)
+                    st.success(f"✅ **{sel}** → {ETAPAS.get(nuevo_e,{'label':nuevo_e})['label']}")
+                    st.session_state.editing = ""
+                    st.rerun()
+
+    # ════════════════════════════════
+    # TAB 2 — EDITAR INFORMACIÓN
+    # ════════════════════════════════
+    with tab_info:
+        st.markdown(
+            '<div class="al blue"><div>💡</div><div>Actualiza aquí la información base del proyecto. '            'Los cambios se guardan en el CRM local. Para que queden en el Sheet de Google, '            'agrega los datos directamente allí también.</div></div>',
+            unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Valores actuales
+        tn_act  = int(r.get("totalNum",0)  or 0)
+        c24_act = int(r.get("c24Num",0)    or 0)
+        c36_act = int(r.get("c36Num",0)    or 0)
+
+        with st.form("uf_info"):
+            st.markdown("#### 🏢 Identificación")
+            ci1, ci2 = st.columns(2)
+            with ci1:
+                nuevo_nombre  = st.text_input("Nombre del edificio",
+                    value=str(r.get("nombre","")).strip())
+                nueva_dir     = st.text_input("Dirección completa",
+                    value=str(r.get("direccion","") or "").strip(),
+                    placeholder="Ej: Calle 94 No 23-17, Chapinero, Bogotá")
+                nuevo_ctc     = st.text_input("Contacto principal",
+                    value=str(r.get("contacto","") or "").strip(),
+                    placeholder="Nombre del administrador o presidente de consejo")
+            with ci2:
+                nuevo_email   = st.text_input("Email de contacto",
+                    value=str(r.get("email","") or "").strip(),
+                    placeholder="admin@edificio.com")
+                nuevo_tel     = st.text_input("Teléfono / WhatsApp",
+                    value=str(r.get("telefono","") or "").strip(),
+                    placeholder="+57 300 000 0000")
+                if u["rol"] in ["gerente","socio"]:
+                    nuevo_com = st.selectbox("Comercial responsable", COMS,
+                        index=COMS.index(str(r.get("comercial","")).strip())
+                        if str(r.get("comercial","")).strip() in COMS else 0)
+                else:
+                    nuevo_com = str(r.get("comercial","")).strip()
+
+            st.markdown("#### 💰 Valor y financiación")
+            cv1, cv2, cv3 = st.columns(3)
+            with cv1:
+                nuevo_val  = st.number_input("Valor total del proyecto ($)",
+                    value=tn_act, step=1_000_000, format="%d",
+                    help="Valor total de la propuesta en pesos COP")
+            with cv2:
+                nuevo_c24  = st.number_input("Cuota 24 meses ($)",
+                    value=c24_act if c24_act>0 else (tn_act//24 if tn_act>0 else 0),
+                    step=100_000, format="%d")
+            with cv3:
+                nuevo_c36  = st.number_input("Cuota 36 meses ($)",
+                    value=c36_act if c36_act>0 else (tn_act//36 if tn_act>0 else 0),
+                    step=100_000, format="%d")
+
+            # Auto-calcular si el usuario cambia el total y deja cuotas en 0
+            if nuevo_val > 0 and nuevo_c24 == 0:
+                nuevo_c24 = nuevo_val // 24
+            if nuevo_val > 0 and nuevo_c36 == 0:
+                nuevo_c36 = nuevo_val // 36
+
+            st.markdown("#### 🔒 Vigilancia actual")
+            cv1, cv2 = st.columns(2)
+            with cv1:
+                nuevo_vig  = st.text_input("Costo mensual vigilancia ($)",
+                    value=str(r.get("vig","") or "").strip(),
+                    placeholder="Ej: 4500000")
+            with cv2:
+                nuevo_vigh = st.text_input("Vigente hasta",
+                    value=str(r.get("vigH","") or "").strip(),
+                    placeholder="Ej: Noviembre 2026")
+
+            st.markdown("#### 📝 Observaciones generales")
+            nuevo_drive = st.text_input("Link carpeta Drive",
+                value=str(r.get("drive","") or "").strip(),
+                placeholder="https://drive.google.com/...")
+            nuevas_notas = st.text_area("Notas generales del proyecto",
+                value=str(r.get("notas","") or "").strip(),
+                height=100,
+                placeholder="Información general del edificio, particularidades, histórico...")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            ga, gb = st.columns(2)
+            with ga:
+                guardar_info = st.form_submit_button("💾 Guardar información", use_container_width=True)
+            with gb:
+                cancelar_info = st.form_submit_button("✕ Cancelar", use_container_width=True)
+
+            if guardar_info:
+                cambios = {
+                    "nombre":    nuevo_nombre.strip().upper(),
+                    "contacto":  nuevo_ctc.strip(),
+                    "email":     nuevo_email.strip(),
+                    "telefono":  nuevo_tel.strip(),
+                    "direccion": nueva_dir.strip(),
+                    "comercial": nuevo_com,
+                    "totalNum":  nuevo_val,
+                    "c24Num":    nuevo_c24,
+                    "c36Num":    nuevo_c36,
+                    "total":     cop(nuevo_val),
+                    "cuota24":   cop(nuevo_c24),
+                    "cuota36":   cop(nuevo_c36),
+                    "vig":       nuevo_vig.strip(),
+                    "vigH":      nuevo_vigh.strip(),
+                    "drive":     nuevo_drive.strip(),
+                    "notas":     nuevas_notas.strip(),
+                    "lastUpdate": datetime.now().isoformat()[:10],
+                }
+                # Filtrar vacíos para no sobrescribir con nada
+                cambios = {k:v for k,v in cambios.items() if v not in [None,""]}
+                update_proy(sel, cambios)
+
+                # Registrar en historial que se actualizó info
+                campos_cambiados = []
+                if nuevo_val != tn_act and nuevo_val > 0:
+                    campos_cambiados.append(f"Valor: {cop(nuevo_val)}")
+                if nueva_dir.strip() and nueva_dir.strip() != str(r.get("direccion","")).strip():
+                    campos_cambiados.append(f"Dirección: {nueva_dir.strip()}")
+                if nuevo_ctc.strip() and nuevo_ctc.strip() != str(r.get("contacto","")).strip():
+                    campos_cambiados.append(f"Contacto: {nuevo_ctc.strip()}")
+                if campos_cambiados:
+                    agregar_historial(sel, est,
+                        f"Información actualizada — {', '.join(campos_cambiados)}",
+                        u["nombre"])
+
+                st.success(f"✅ Información de **{nuevo_nombre or sel}** actualizada correctamente")
+                st.rerun()
+
+            if cancelar_info:
+                st.session_state.editing = ""
+                st.rerun()
+
 
 def pg_nueva_cotizacion():
     hdr("🧮","Nueva Cotización","Registrar en el CRM")
