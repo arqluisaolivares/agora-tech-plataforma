@@ -59,7 +59,7 @@ html,body,[class*="css"]{font-family:'Inter',sans-serif!important;background:var
 h1,h2,h3{font-family:'Space Grotesk',sans-serif!important}
 
 /* ── SIDEBAR ── */
-[data-testid="stSidebar"]{background:#0F172A!important;border-right:1px solid rgba(255,255,255,.05)!important}
+section[data-testid="stSidebar"],section[data-testid="stSidebar"]>div,[data-testid="stSidebar"]{background:#0B1629!important;border-right:1px solid #1a2744!important}
 [data-testid="stSidebar"] .stButton>button{
   all:unset!important;display:block!important;width:100%!important;
   padding:8px 14px!important;font-size:12.5px!important;font-weight:500!important;
@@ -135,6 +135,35 @@ h1,h2,h3{font-family:'Space Grotesk',sans-serif!important}
 .pago-row{background:var(--s);border:1px solid var(--border);border-radius:var(--r2);padding:10px 14px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
 
 div[data-testid="stForm"]{border:none!important;padding:0!important}
+/* Sidebar: hacer botones de nav invisibles pero clickeables sobre el HTML */
+[data-testid="stSidebar"] .stButton>button:has(> div > p:empty),
+[data-testid="stSidebar"] .stButton>button{
+  position:relative!important;
+  margin-top:-38px!important;
+  height:38px!important;
+  width:100%!important;
+  background:transparent!important;
+  background-color:transparent!important;
+  border:none!important;
+  box-shadow:none!important;
+  color:transparent!important;
+  font-size:0px!important;
+  opacity:.01!important;
+  cursor:pointer!important;
+  z-index:10!important;
+  border-radius:0!important;
+  transform:none!important;
+}
+
+/* Sidebar: los st.button quedan invisibles, el HTML de arriba es la UI real */
+[data-testid="stSidebar"] .stButton>button>div,
+[data-testid="stSidebar"] .stButton>button p{
+  visibility:hidden!important;height:0!important;margin:0!important;padding:0!important;
+}
+[data-testid="stSidebar"] .element-container:has(.stButton){
+  position:relative!important;
+}
+
 </style>""", unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
@@ -414,11 +443,20 @@ def sidebar():
 
         def item(label, page, key):
             activo = pg_actual==page
-            if activo:
-                st.markdown(f'<div style="background:rgba(37,99,235,.28);border-radius:6px;margin:1px 0;padding:8px 14px;font-size:12.5px;font-weight:700;color:white">{label}</div>',unsafe_allow_html=True)
-            else:
-                if st.button(label, key=f"ni_{key}", use_container_width=True):
-                    st.session_state.page=page; st.rerun()
+            bg     = "#1B3A6B" if activo else "transparent"
+            bord   = "border-left:3px solid #3B82F6;" if activo else "border-left:3px solid transparent;"
+            color  = "#FFFFFF" if activo else "#94A3B8"
+            fw     = "600" if activo else "400"
+            # Mostrar el div decorativo
+            st.markdown(f"""<div style='background:{bg};{bord}padding:9px 16px;
+                margin:1px 0;display:flex;align-items:center;gap:8px'>
+              <span style='font-size:11px;font-weight:{fw};color:{color};
+                   letter-spacing:.5px;text-transform:uppercase;
+                   font-family:Inter,sans-serif'>{label}</span>
+            </div>""", unsafe_allow_html=True)
+            # Botón con CSS que lo hace transparente e invisible encima del div
+            if st.button(" ", key=f"ni_{key}", use_container_width=True):
+                st.session_state.page=page; st.rerun()
 
         sec("PRINCIPAL")
         item("📊  Dashboard",       "Dashboard",          "dash")
