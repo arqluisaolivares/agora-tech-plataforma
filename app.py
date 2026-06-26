@@ -12,6 +12,7 @@ import json, os
 from datetime import datetime, timedelta
 from groq import Groq
 import plotly.express as px
+import plotly.graph_objects as go
 import urllib.request, io
 import streamlit.components.v1
 
@@ -59,14 +60,38 @@ html,body,[class*="css"]{font-family:'Inter',sans-serif!important;background:var
 h1,h2,h3{font-family:'Space Grotesk',sans-serif!important}
 
 /* SIDEBAR */
-[data-testid="stSidebar"]{background:linear-gradient(180deg,#0F172A,#1E293B)!important;border-right:1px solid rgba(255,255,255,.04)!important}
-[data-testid="stSidebar"] *{color:rgba(255,255,255,.7)!important}
+[data-testid="stSidebar"]{background:linear-gradient(180deg,#0F172A 0%,#0F1E38 100%)!important;border-right:1px solid rgba(255,255,255,.04)!important}
+[data-testid="stSidebar"] *{color:rgba(255,255,255,.75)!important}
+/* Eliminar cualquier fondo blanco de botones en sidebar */
 [data-testid="stSidebar"] .stButton>button{
-  background:transparent!important;color:rgba(255,255,255,.65)!important;border:none!important;
-  box-shadow:none!important;border-radius:7px!important;text-align:left!important;
-  font-size:12.5px!important;font-weight:500!important;padding:8px 12px!important;
-  width:100%!important;margin:1px 0!important;transition:all .15s!important;transform:none!important}
-[data-testid="stSidebar"] .stButton>button:hover{background:rgba(255,255,255,.08)!important;color:white!important}
+  background:transparent!important;
+  color:rgba(255,255,255,.72)!important;
+  border:none!important;
+  box-shadow:none!important;
+  border-radius:6px!important;
+  text-align:left!important;
+  justify-content:flex-start!important;
+  font-size:12.5px!important;
+  font-weight:500!important;
+  padding:8px 12px!important;
+  width:100%!important;
+  margin:1px 0!important;
+  transition:background .15s,color .15s!important;
+  transform:none!important;
+  letter-spacing:0!important;
+}
+[data-testid="stSidebar"] .stButton>button:hover{
+  background:rgba(255,255,255,.09)!important;
+  color:white!important;
+}
+[data-testid="stSidebar"] .stButton>button p{
+  text-align:left!important;
+  margin:0!important;
+}
+[data-testid="stSidebar"] .stButton>button:focus{
+  outline:none!important;
+  box-shadow:none!important;
+}
 
 /* BOTONES */
 .stButton>button{background:linear-gradient(135deg,#2563EB,#0D9488)!important;color:white!important;
@@ -147,6 +172,9 @@ USUARIOS_BASE = {
     "lina":     {"pass":"lina2026",     "nombre":"Lina Calle",         "rol":"comercial", "comercial":"LINA CALLE",         "activo":True},
     "alberto":  {"pass":"alberto2026",  "nombre":"Alberto Ferrer",     "rol":"comercial", "comercial":"ALBERTO FERRER",     "activo":True},
     "santiago": {"pass":"santiago2026", "nombre":"Santiago Bohórquez", "rol":"comercial", "comercial":"SANTIAGO BOHORQUEZ", "activo":True},
+    # Socios — solo visualización (no pueden editar)
+    "ctorres":  {"pass":"socio2026",    "nombre":"Carlos Torres",      "rol":"socio",     "comercial":"",                   "activo":True},
+    "cmendez":  {"pass":"socio2026",    "nombre":"Carlos Méndez",      "rol":"socio",     "comercial":"",                   "activo":True},
 }
 def get_usuarios():
     if "usuarios_db" not in st.session_state:
@@ -351,7 +379,8 @@ def hdr(icon,title,sub=""):
 # SESSION STATE
 # ══════════════════════════════════════════
 for k,v in {"logged_in":False,"user":None,"page":"Dashboard","messages":[],"crm":None,
-            "correo":"","editing":"","vista_estado":None,"sheet_ok":False,"sheet_status":""}.items():
+            "correo":"","editing":"","vista_estado":None,"sheet_ok":False,"sheet_status":"",
+            "alerta_vista":False,"vista_cierres":False}.items():
     if k not in st.session_state: st.session_state[k]=v
 
 if not st.session_state.get("groq_key"):
@@ -359,6 +388,35 @@ if not st.session_state.get("groq_key"):
         k=st.secrets.get("GROQ_API_KEY","")
         if k: st.session_state["groq_key"]=k
     except: pass
+
+def mostrar_alerta_critica():
+    """Popup con alertas críticas al iniciar sesión."""
+    if st.session_state.get("alerta_vista"): return
+    df = get_crm()
+    if df.empty: return
+    neg = df[df["estado"]=="negociacion"]
+    # Proyectos sin actualizar más de 14 días (muy urgente)
+    hace_14=(datetime.now()-timedelta(days=14)).isoformat()[:10]
+    sin_14=df[(df["estado"]=="evaluacion_consejo") & (df["lastUpdate"].astype(str).str.strip()<hace_14)]
+    # Solo mostrar si hay algo crítico
+    tiene_critico = len(neg)>0 or len(sin_14)>0
+    if not tiene_critico:
+        st.session_state.alerta_vista=True; return
+    with st.container():
+        st.markdown("""<div style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.55);z-index:9998'></div>""",unsafe_allow_html=True)
+        st.markdown(f"""<div style='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+            background:white;border-radius:16px;padding:28px 32px;width:520px;max-width:90vw;
+            z-index:9999;box-shadow:0 20px 60px rgba(0,0,0,.4)'>
+          <div style='display:flex;align-items:center;gap:12px;margin-bottom:16px'>
+            <div style='width:40px;height:40px;border-radius:10px;background:#FEF2F2;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0'>🚨</div>
+            <div style='font-family:Space Grotesk,sans-serif;font-size:17px;font-weight:700;color:#0F172A'>Alertas críticas de hoy</div>
+          </div>
+          {''.join([f'<div style="background:#FEF2F2;border-left:4px solid #EF4444;border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:8px"><div style="font-size:12.5px;font-weight:700;color:#991B1B">🔥 NEGOCIACIÓN ACTIVA: {r["nombre"]}</div><div style="font-size:11.5px;color:#334155;margin-top:2px">{str(r.get("lastNote",""))[:120]}</div></div>' for _,r in neg.iterrows()])}
+          {''.join([f'<div style="background:#FFFBEB;border-left:4px solid #D97706;border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:8px"><div style="font-size:12.5px;font-weight:700;color:#92400E">⏰ Sin actualizar +14 días: {r["nombre"]}</div><div style="font-size:11.5px;color:#334155;margin-top:2px">{str(r.get("lastNote","Sin nota"))[:100]}</div></div>' for _,r in sin_14.head(3).iterrows()])}
+          <div style='font-size:11px;color:#94A3B8;margin-top:12px'>Haz clic fuera o en el botón para cerrar</div>
+        </div>""",unsafe_allow_html=True)
+    if st.button("✓ Entendido — cerrar alerta",use_container_width=True,key="cerrar_popup"):
+        st.session_state.alerta_vista=True; st.rerun()
 
 # ══════════════════════════════════════════
 # LOGIN
@@ -381,14 +439,15 @@ def pg_login():
                     st.session_state.logged_in=True; st.session_state.user=users[un]; st.rerun()
                 else: st.error("Usuario o contraseña incorrectos")
         st.markdown("""<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:10px;margin-top:12px;font-size:11px;color:#94A3B8;text-align:center'>
-          luisa/luisa2026 · rafael/rafael2026 · sonia/sonia2026<br>lina/lina2026 · alberto/alberto2026 · santiago/santiago2026
+          luisa/luisa2026 · rafael/rafael2026 · sonia/sonia2026<br>lina/lina2026 · alberto/alberto2026 · santiago/santiago2026<br>
+          <span style="color:#7C3AED">ctorres/socio2026 · cmendez/socio2026</span>
         </div>""",unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════
 def sidebar():
-    u=st.session_state.user; es_g=u["rol"]=="gerente"
+    u=st.session_state.user; es_g=u["rol"] in ["gerente","socio"]
     df=mis_proyectos(); hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
     n_nov=len(df[df["lastUpdate"].astype(str).str.strip()>hace_7])
     sheet_ok=st.session_state.get("sheet_ok",False)
@@ -504,7 +563,16 @@ def pg_dashboard():
     cerra_n = len(df[df["estado"]=="cerrado"])
     neg_n   = len(df[df["estado"]=="negociacion"])
 
-    st.markdown("#### Resumen — *clic en cualquier tarjeta para ver los edificios*")
+    # Cierres probables — lista dinámica
+    CIERRES_PROBABLES = [
+        "COUNTRY 136","PARK 104","EDIFICIO RISARALDA","EDIFICIO SAHARA",
+        "EDIFICIO CESANNE","EDIFICIO LOS PINOS","EDIFICIO CAMILA","EDIFICIO ALTOS DEL RETIRO",
+        "EDIFICIO AVANTI","EDIFICIO URAPANES","MÁLAGA","EDIFICIO EL CERRO",
+    ]
+    df_cierres = df[df["nombre"].isin(CIERRES_PROBABLES) & ~df["estado"].isin(["perdido","cerrado"])]
+    n_cierres = len(df_cierres)
+
+    st.markdown("#### Resumen del pipeline — *clic en cualquier tarjeta para ver los edificios*")
     c1,c2,c3,c4,c5,c6=st.columns(6)
 
     with c1:
@@ -513,16 +581,47 @@ def pg_dashboard():
         st.markdown(f'<div class="kpi" style="border-bottom:2px solid #D97706"><div class="kpi-lbl">En evaluación</div><div class="kpi-val amber">{eval_n}</div><div class="kpi-sub">reuniones consejo</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
         if st.button("Ver →",key="ke",use_container_width=True): st.session_state.vista_estado="evaluacion_consejo"; st.rerun()
     with c3:
-        st.markdown(f'<div class="kpi" style="border-bottom:2px solid #F59E0B"><div class="kpi-lbl">Contacto frío</div><div class="kpi-val" style="color:#F59E0B">{cotiz_n}</div><div class="kpi-sub">sin respuesta activa</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
-        if st.button("Ver →",key="kc",use_container_width=True): st.session_state.vista_estado="cotizado"; st.rerun()
-    with c4:
         st.markdown(f'<div class="kpi" style="border-bottom:2px solid #0EA5E9"><div class="kpi-lbl">Stand-by Vigilancia</div><div class="kpi-val teal">{standb}</div><div class="kpi-sub">reactivar sep–nov</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
         if st.button("Ver →",key="ks",use_container_width=True): st.session_state.vista_estado="aprobado_espera"; st.rerun()
-    with c5:
+    with c4:
         st.markdown(f'<div class="kpi" style="border-bottom:2px solid #EF4444"><div class="kpi-lbl">Rechazados</div><div class="kpi-val red">{perd_n}</div><div class="kpi-sub">{round(perd_n/len(df)*100) if len(df) else 0}% del total</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
         if st.button("Ver →",key="kr",use_container_width=True): st.session_state.vista_estado="perdido"; st.rerun()
-    with c6:
+    with c5:
         st.markdown(f'<div class="kpi" style="border-bottom:2px solid {"#059669" if cerra_n>0 else "#EF4444"}"><div class="kpi-lbl">Contratos</div><div class="kpi-val {"green" if cerra_n>0 else "red"}">{cerra_n}</div><div class="kpi-sub">{"🎉 ¡Primer cierre!" if cerra_n>0 else "Q3 2026 esperado"}</div></div>',unsafe_allow_html=True)
+    with c6:
+        # NUEVO — Cierres probables
+        st.markdown(f'<div class="kpi" style="border-bottom:2px solid #7C3AED;cursor:pointer"><div class="kpi-lbl">🔥 Cierres probables</div><div class="kpi-val" style="color:#7C3AED">{n_cierres}</div><div class="kpi-sub">alta prioridad jul 2026</div><div class="kpi-hint">▸ Ver lista</div></div>',unsafe_allow_html=True)
+        if st.button("Ver →",key="kci",use_container_width=True): st.session_state.vista_cierres=True; st.rerun()
+
+    # Vista expandida de cierres probables
+    if st.session_state.get("vista_cierres"):
+        st.markdown("---")
+        col_t,col_b=st.columns([4,1])
+        with col_t: st.markdown("#### 🔥 Cierres probables — Julio 2026")
+        with col_b:
+            if st.button("✕ Cerrar",key="close_cierres"): st.session_state.vista_cierres=False; st.rerun()
+        DETALLE_CIERRES = {
+            "COUNTRY 136":             ("Rafael Torres","Asamblea jun 27 — Gestiona Luisa","🔴"),
+            "PARK 104":                ("Rafael Torres","Asamblea jun 13 — Nuevo admin a confirmar","🔴"),
+            "EDIFICIO RISARALDA":      ("Rafael Torres","Asamblea extraordinaria antes jul 30","🔴"),
+            "EDIFICIO SAHARA":         ("Rafael Torres","Asamblea jun 13 — confirmar si va propuesta","🟡"),
+            "EDIFICIO CESANNE":        ("Rafael Torres","Asamblea jul 16 — Germán González impulsa","🟡"),
+            "EDIFICIO LOS PINOS":      ("Lina Calle",   "Asamblea extraordinaria tentativa jul 16","🟡"),
+            "EDIFICIO CAMILA":         ("Lina Calle",   "Reunión consejo jun 9 — decidirán proveedor","🟡"),
+            "EDIFICIO ALTOS DEL RETIRO":("Lina Calle",  "Asamblea extraordinaria tentativa jul 16","🟡"),
+            "EDIFICIO AVANTI":         ("Rafael Torres","Visita Alto 61 hecha — decisión julio","🟡"),
+            "EDIFICIO URAPANES":       ("Rafael Torres","Preseleccionados entre 3 — consejo jun 16","🟡"),
+            "MÁLAGA":                  ("Rafael Torres","Asamblea mediados junio — pendiente confirmar","🟡"),
+            "EDIFICIO EL CERRO":       ("Rafael Torres","Visita Alto 61 jun 11 — decisión próxima","🟡"),
+        }
+        for _, r in df_cierres.iterrows():
+            det = DETALLE_CIERRES.get(r["nombre"],("","","🟡"))
+            com, motivo, ico = det
+            col_n,col_s,col_v = st.columns([2.5,3,1])
+            col_n.markdown(f"**{ico} {r['nombre']}**")
+            col_s.markdown(f"<small style='color:#64748B'>{motivo}</small>",unsafe_allow_html=True)
+            col_v.markdown(f"<small style='color:#94A3B8'>{str(r.get('comercial','')).split()[0] if r.get('comercial') else com.split()[0]}</small>",unsafe_allow_html=True)
+        st.markdown("---")
 
     st.markdown("<br>",unsafe_allow_html=True)
 
@@ -537,38 +636,53 @@ def pg_dashboard():
     # Gráficas
     c1,c2=st.columns(2)
     with c1:
-        data=[
-            {"Etapa":"En evaluación/Consejo","n":eval_n,"color":"#D97706"},
+        # DONUT — distribución por etapa (excluye perdidos para resaltar activos)
+        datos_donut = [
+            {"Etapa":"En evaluación","n":eval_n,"color":"#D97706"},
             {"Etapa":"Contacto frío","n":cotiz_n,"color":"#F59E0B"},
             {"Etapa":"Negociando","n":neg_n,"color":"#F97316"},
             {"Etapa":"Stand-by Vig.","n":standb,"color":"#0EA5E9"},
-            {"Etapa":"Perdido","n":perd_n,"color":"#EF4444"},
             {"Etapa":"Cerrado","n":cerra_n,"color":"#059669"},
+            {"Etapa":"Perdido","n":perd_n,"color":"#E2E8F0"},
         ]
-        df_d=pd.DataFrame(data)
-        fig=px.bar(df_d,x="Etapa",y="n",title="Proyectos por etapa",color="Etapa",
-                   color_discrete_map={d["Etapa"]:d["color"] for d in data},
-                   labels={"n":""})
-        fig.update_layout(plot_bgcolor="white",paper_bgcolor="white",showlegend=False,
-                          font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=6,l=0,r=0))
-        fig.update_traces(marker_line_width=0)
+        df_d=pd.DataFrame(datos_donut)
+        fig=px.pie(df_d,values="n",names="Etapa",hole=0.55,
+                   title="Distribución del pipeline",
+                   color="Etapa",
+                   color_discrete_map={d["Etapa"]:d["color"] for d in datos_donut})
+        total_activos = eval_n + cotiz_n + neg_n + standb + cerra_n
+        fig.update_traces(textposition="outside",textinfo="percent+label",
+                          marker=dict(line=dict(color="white",width=2)))
+        fig.add_annotation(text=f"<b>{total_activos}</b><br><span style='font-size:10px'>activos</span>",
+                           x=0.5,y=0.5,font_size=16,showarrow=False)
+        fig.update_layout(paper_bgcolor="white",font_family="Inter",
+                          title_font_family="Space Grotesk",
+                          showlegend=False,
+                          margin=dict(t=40,b=10,l=10,r=10))
         st.plotly_chart(fig,use_container_width=True)
     with c2:
-        if es_g and "comercial" in df.columns:
-            dc=df[df["totalNum"]>0].groupby("comercial")["totalNum"].sum().reset_index()
-            dc["M"]=(dc["totalNum"]/1e6).round(1)
-            dc["Com"]=dc["comercial"].str.split().str[0]
-            fig2=px.bar(dc.sort_values("M",ascending=True),x="M",y="Com",orientation="h",
-                        title="Pipeline por comercial ($M COP)",color="M",
-                        color_continuous_scale=["#2563EB","#0D9488"],labels={"M":"","Com":""})
-            fig2.update_layout(plot_bgcolor="white",paper_bgcolor="white",coloraxis_showscale=False,
-                               font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=6))
-        else:
-            mis_e=df.groupby("estado").size().reset_index(name="n")
-            mis_e["Estado"]=mis_e["estado"].map(lambda x:ETAPAS.get(x,{"label":x})["label"])
-            fig2=px.pie(mis_e,values="n",names="Estado",hole=0.48,title="Mis proyectos",
-                        color_discrete_sequence=["#D97706","#F59E0B","#F97316","#0EA5E9","#EF4444","#059669"])
-            fig2.update_layout(paper_bgcolor="white",font_family="Inter",title_font_family="Space Grotesk",margin=dict(t=36,b=6))
+        # FUNNEL de conversión — más relevante que barras de pipeline
+        etapas_funnel=[
+            ("Presentadas",len(df)),
+            ("Activas (excl. perdidos)",len(df[~df["estado"].isin(["perdido"])])),
+            ("En evaluación/consejo",eval_n),
+            ("Negociando",neg_n if neg_n>0 else 0),
+            ("Contratos cerrados",cerra_n),
+        ]
+        fig2=go.Figure(go.Funnel(
+            y=[e[0] for e in etapas_funnel],
+            x=[e[1] for e in etapas_funnel],
+            textinfo="value+percent initial",
+            marker=dict(color=["#2563EB","#D97706","#F97316","#F59E0B","#059669"]),
+            connector=dict(line=dict(color="white",width=2)),
+        ))
+        fig2.update_layout(
+            title="Embudo de conversión",
+            paper_bgcolor="white",plot_bgcolor="white",
+            font_family="Inter",title_font_family="Space Grotesk",
+            margin=dict(t=40,b=10,l=10,r=10),
+            showlegend=False
+        )
         st.plotly_chart(fig2,use_container_width=True)
 
     # Alertas
@@ -994,23 +1108,142 @@ Adultos: {adultos or "No reportado"} | Incidentes: {incidentes or "Ninguno"}
                 st.markdown("---"); st.markdown(r)
 
 def pg_calendario():
-    hdr("📅","Calendario","Agenda y asambleas próximas")
-    c1,c2=st.columns([2,1])
-    with c1:
+    hdr("📅","Calendario","Agenda semanal y próximas asambleas")
+
+    # ── Inicializar eventos en session_state
+    if "eventos_cal" not in st.session_state:
+        st.session_state.eventos_cal = [
+            # Comité de gerencia fijo — todos los martes 4:00–5:30pm
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-06-30","hora":"16:00","fin":"17:30","notas":"Reunión semanal con socios Carlos Torres y Carlos Méndez","color":"#7C3AED","icono":"🏢"},
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-07-07","hora":"16:00","fin":"17:30","notas":"Reunión semanal con socios","color":"#7C3AED","icono":"🏢"},
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-07-14","hora":"16:00","fin":"17:30","notas":"Reunión semanal con socios","color":"#7C3AED","icono":"🏢"},
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-07-21","hora":"16:00","fin":"17:30","notas":"Reunión semanal con socios","color":"#7C3AED","icono":"🏢"},
+            # Asambleas conocidas
+            {"titulo":"Asamblea Country 136","tipo":"Asamblea","fecha":"2026-06-27","hora":"18:00","fin":"20:00","notas":"Gestiona Luisa. CRÍTICA — cierre probable","color":"#EF4444","icono":"🔥"},
+            {"titulo":"Asamblea Park 104","tipo":"Asamblea","fecha":"2026-06-13","hora":"18:00","fin":"20:00","notas":"Confirmar con nuevo admin","color":"#EF4444","icono":"🔥"},
+            {"titulo":"Asamblea Edificio Sahara","tipo":"Asamblea","fecha":"2026-06-13","hora":"17:00","fin":"19:00","notas":"Confirmar si va propuesta Ágora","color":"#D97706","icono":"🟡"},
+            {"titulo":"Reunión consejo Camila","tipo":"Reunión","fecha":"2026-06-09","hora":"18:00","fin":"19:30","notas":"Decidirán proveedor","color":"#D97706","icono":"📋"},
+            {"titulo":"Visita Alto 61 — Ed. El Cerro","tipo":"Visita Alto 61","fecha":"2026-06-11","hora":"10:00","fin":"11:30","notas":"Consejo visitará Alto 61","color":"#0D9488","icono":"⭐"},
+            {"titulo":"Reunión consejo Urapanes","tipo":"Reunión","fecha":"2026-06-16","hora":"18:00","fin":"19:30","notas":"Preseleccionados entre 3","color":"#D97706","icono":"📋"},
+            {"titulo":"Asamblea Ed. Cesanne","tipo":"Asamblea","fecha":"2026-07-16","hora":"18:00","fin":"20:00","notas":"Germán González impulsa","color":"#D97706","icono":"🟡"},
+            {"titulo":"Asamblea Ed. Los Pinos","tipo":"Asamblea","fecha":"2026-07-16","hora":"19:00","fin":"21:00","notas":"Asamblea extraordinaria nocturna","color":"#D97706","icono":"🟡"},
+        ]
+
+    # ── Tabs: Semana actual / Agregar evento / Próximas semanas
+    tab_sem, tab_add, tab_prox = st.tabs(["📆 Semana actual","➕ Agregar evento","🔥 Próximas asambleas"])
+
+    with tab_sem:
+        # Calcular semana actual (lun–dom)
+        hoy = datetime.now().date()
+        lunes = hoy - timedelta(days=hoy.weekday())
+        dias_semana = [lunes + timedelta(days=i) for i in range(7)]
+        nombres_dias = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"]
+        HORAS = [f"{h:02d}:00" for h in range(8, 21)]
+
+        st.markdown(f"**Semana del {lunes.strftime('%d %b')} al {(lunes+timedelta(days=6)).strftime('%d %b %Y')}**")
+
+        # Filtrar eventos de la semana
+        evs_semana = {}
+        for d in dias_semana:
+            evs_semana[d] = [e for e in st.session_state.eventos_cal
+                             if str(e.get("fecha",""))[:10] == d.isoformat()]
+
+        # Renderizar calendario semanal HTML
+        col_width = 100 / 8
+        header_cols = f"<td style='width:{col_width*0.6:.1f}%;background:#F8FAFC;border:1px solid #E2E8F0;padding:6px 4px;font-size:10px;color:#94A3B8;text-align:center'></td>"
+        for i,d in enumerate(dias_semana):
+            es_hoy = d==hoy
+            bg = "#EFF6FF" if es_hoy else "#F8FAFC"
+            fw = "700" if es_hoy else "500"
+            color = "#2563EB" if es_hoy else "#334155"
+            header_cols += f"<td style='background:{bg};border:1px solid #E2E8F0;padding:7px 4px;text-align:center;font-family:Space Grotesk,sans-serif;font-size:11px;font-weight:{fw};color:{color};width:{col_width:.1f}%'>{nombres_dias[i]}<br>{d.strftime('%d')}</td>"
+
+        filas = ""
+        for hora in HORAS:
+            h_int = int(hora[:2])
+            fila = f"<td style='background:#F8FAFC;border:1px solid #E2E8F0;padding:4px 6px;font-size:10px;color:#94A3B8;text-align:right;white-space:nowrap'>{hora}</td>"
+            for d in dias_semana:
+                celdas_ev = ""
+                for e in evs_semana[d]:
+                    h_ev = int(str(e.get("hora","00:00"))[:2])
+                    if h_ev == h_int:
+                        h_fin = str(e.get("fin","")).replace(":","h") if e.get("fin") else ""
+                        celdas_ev += f"""<div style='background:{e["color"]}22;border-left:3px solid {e["color"]};border-radius:0 5px 5px 0;padding:3px 6px;margin-bottom:2px;font-size:10px;line-height:1.4'>
+                            <div style='font-weight:700;color:{e["color"]}'>{e["icono"]} {e["titulo"][:22]}</div>
+                            <div style='color:#64748B'>{e.get("hora","")}{"–"+e.get("fin","") if e.get("fin") else ""}</div>
+                        </div>"""
+                bg_celda = "#FAFBFF" if d==hoy else "white"
+                fila += f"<td style='background:{bg_celda};border:1px solid #E2E8F0;padding:3px;vertical-align:top;min-height:36px'>{celdas_ev}</td>"
+            filas += f"<tr>{fila}</tr>"
+
+        html_cal = f"""<div style='overflow-x:auto;border-radius:10px;border:1px solid #E2E8F0;box-shadow:0 1px 3px rgba(15,23,42,.07)'>
+          <table style='width:100%;border-collapse:collapse;background:white'>
+            <thead><tr>{header_cols}</tr></thead>
+            <tbody>{filas}</tbody>
+          </table>
+        </div>"""
+        st.markdown(html_cal, unsafe_allow_html=True)
+
+        # Leyenda
+        st.markdown("""<div style='display:flex;gap:14px;margin-top:10px;font-size:11px;flex-wrap:wrap'>
+            <span><span style='color:#7C3AED;font-weight:700'>🏢</span> Comité de Gerencia (martes 4–5:30pm)</span>
+            <span><span style='color:#EF4444;font-weight:700'>🔥</span> Asamblea crítica</span>
+            <span><span style='color:#D97706;font-weight:700'>📋</span> Reunión consejo</span>
+            <span><span style='color:#0D9488;font-weight:700'>⭐</span> Visita Alto 61</span>
+        </div>""", unsafe_allow_html=True)
+
+    with tab_add:
+        u_cal = st.session_state.user
+        rol_cal = u_cal.get("rol","comercial")
+        st.markdown("**Agregar evento al calendario**")
         with st.form("cal_f"):
-            c1i,c2i=st.columns(2)
-            with c1i: edif=st.text_input("Edificio"); tipo=st.selectbox("Tipo",["Reunión consejo","Asamblea","Llamada","Visita Alto 61","Firma contrato","Inicio obra","Entrega","Otro"])
-            with c2i: fecha_a=st.date_input("Fecha",value=datetime.now()); hora_a=st.time_input("Hora")
-            titulo_a=st.text_input("Título *"); notas_a=st.text_area("Notas",height=55)
-            if st.form_submit_button("📅 Guardar",use_container_width=True):
-                if titulo_a: st.success(f"✅ {titulo_a} — {fecha_a.strftime('%d %b')}")
-                else: st.error("Título obligatorio")
-    with c2:
-        st.markdown("#### 🔥 Próximas semanas")
-        urgentes=[("Country 136","Asamblea jun 27","red"),("Park 104","Asamblea jun 13","red"),("Ed. Risaralda","Asamblea extraordinaria jul","red"),("Ed. Sahara","Asamblea jun 13","amber"),("Ed. Camila","Reunión consejo jun 9","amber"),("Ed. Urapanes","Reunión consejo jun 16","amber"),("Ed. El Cerro","Visita Alto 61 jun 11","blue"),("Ed. Cesanne","Asamblea jul 16","blue")]
-        for n,d,c in urgentes:
-            ic={"red":"🔥","amber":"🟡","blue":"💡"}[c]
-            st.markdown(f'<div class="al {c}" style="padding:8px 11px;margin-bottom:5px"><div style="font-size:13px">{ic}</div><div><strong style="font-size:12px">{n}</strong><div style="font-size:10.5px">{d}</div></div></div>',unsafe_allow_html=True)
+            c1i,c2i = st.columns(2)
+            with c1i:
+                titulo_a = st.text_input("Título *", placeholder="Ej: Asamblea Edificio Camila")
+                edif_a   = st.text_input("Edificio (opcional)")
+                tipo_a   = st.selectbox("Tipo",["Reunión consejo","Asamblea","Visita Alto 61","Llamada","Comité","Firma contrato","Inicio obra","Entrega","Otro"])
+            with c2i:
+                fecha_a  = st.date_input("Fecha", value=datetime.now())
+                hora_a   = st.selectbox("Hora inicio", [f"{h:02d}:{m:02d}" for h in range(8,21) for m in [0,30]])
+                hora_fin = st.selectbox("Hora fin", [f"{h:02d}:{m:02d}" for h in range(8,22) for m in [0,30]], index=3)
+            notas_a = st.text_area("Notas", height=60, placeholder="Detalles del evento...")
+            if rol_cal in ["gerente","socio"]:
+                com_a = st.selectbox("Comercial responsable", ["—"]+COMS)
+            else:
+                com_a = u_cal.get("comercial","")
+            COLORES_TIPO = {"Asamblea":"#EF4444","Reunión consejo":"#D97706","Visita Alto 61":"#0D9488","Comité":"#7C3AED","Llamada":"#2563EB","Firma contrato":"#059669","Inicio obra":"#059669","Otro":"#94A3B8"}
+            ICONOS_TIPO  = {"Asamblea":"🏛️","Reunión consejo":"📋","Visita Alto 61":"⭐","Comité":"🏢","Llamada":"📞","Firma contrato":"📝","Inicio obra":"🔨","Otro":"📅"}
+            if st.form_submit_button("📅 Agregar evento", use_container_width=True):
+                if not titulo_a.strip():
+                    st.error("El título es obligatorio")
+                else:
+                    st.session_state.eventos_cal.append({
+                        "titulo": titulo_a, "tipo": tipo_a,
+                        "fecha": fecha_a.isoformat(), "hora": hora_a, "fin": hora_fin,
+                        "notas": notas_a, "color": COLORES_TIPO.get(tipo_a,"#94A3B8"),
+                        "icono": ICONOS_TIPO.get(tipo_a,"📅"),
+                        "edificio": edif_a, "comercial": com_a,
+                    })
+                    st.success(f"✅ {titulo_a} — {fecha_a.strftime('%d %b')} {hora_a}")
+                    st.rerun()
+
+    with tab_prox:
+        st.markdown("#### 🔥 Próximas asambleas y reuniones")
+        urgentes=[
+            ("Country 136","Asamblea jun 27","red","Rafael — Gestiona Luisa"),
+            ("Park 104","Asamblea jun 13","red","Rafael — Confirmar admin"),
+            ("Ed. Risaralda","Asamblea extraordinaria jul","red","Rafael/Luisa"),
+            ("Ed. Sahara","Asamblea jun 13","amber","Rafael — Confirmar"),
+            ("Ed. Camila","Reunión consejo jun 9","amber","Lina"),
+            ("Ed. El Cerro","Visita Alto 61 jun 11","teal","Rafael"),
+            ("Ed. Urapanes","Reunión consejo jun 16","amber","Rafael"),
+            ("Ed. Cesanne","Asamblea jul 16","blue","Rafael — Germán González"),
+            ("Ed. Los Pinos","Asamblea jul 16 nocturna","blue","Lina"),
+            ("Ed. Altos del Retiro","Asamblea extraordinaria jul 16","blue","Lina"),
+        ]
+        for n,d,c,com in urgentes:
+            ic={"red":"🔥","amber":"🟡","teal":"⭐","blue":"💡"}[c]
+            st.markdown(f'<div class="al {c}" style="padding:9px 13px;margin-bottom:6px"><div style="font-size:14px">{ic}</div><div><strong style="font-size:12.5px">{n}</strong> <span style="font-size:11px;color:#94A3B8">· {com}</span><br><span style="font-size:11px">{d}</span></div></div>',unsafe_allow_html=True)
 
 def pg_configuracion():
     u=st.session_state.user; es_g=u["rol"]=="gerente"
@@ -1194,7 +1427,7 @@ COORDS_CONOCIDAS = {
     "EDIFICIO YAKARTA":          {"lat": 4.6461, "lng": -74.0741, "dir": "Bogotá"},
     "EDIFICIO TORRE CHALETS":    {"lat": 4.6441, "lng": -74.0761, "dir": "Bogotá"},
     # Alto 61 (referencia instalación)
-    "ALTO 61 (Referencia)":      {"lat": 4.6882, "lng": -74.0427, "dir": "Calle 61 #14-25, Bogotá"},
+    "ALTO 61 (Referencia)":      {"lat": 4.6558, "lng": -74.0612, "dir": "Calle 61 #3B-08, Bogotá"},
 }
 
 
@@ -1379,6 +1612,9 @@ if not st.session_state.logged_in:
     pg_login()
 else:
     sidebar()
+    # Mostrar popup de alertas críticas al primer login de la sesión
+    if not st.session_state.get("alerta_vista"):
+        mostrar_alerta_critica()
     pg=st.session_state.get("page","Dashboard")
     {
         "Dashboard":pg_dashboard,"Novedades":pg_novedades,
