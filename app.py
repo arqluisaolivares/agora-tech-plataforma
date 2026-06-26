@@ -463,6 +463,7 @@ def sidebar():
         item("📊  Dashboard",       "Dashboard",          "dash")
         item(f"🔔  Novedades{' ('+str(n_nov)+')' if n_nov else ''}","Novedades","nov")
         sec("COMERCIAL")
+        item("📲  Leads WA",         "Leads WhatsApp",     "leads")
         item("📋  Proyectos",        "Proyectos",          "proy")
         item("📝  Actualizar Estado","Actualizar Estado",  "act")
         item("🧮  Nueva Cotización", "Nueva Cotización",   "cot")
@@ -1882,6 +1883,287 @@ def pg_mapa():
     st.markdown(f'<div class="al blue" style="margin-top:10px"><div>💡</div><div>Haz <strong>clic en cualquier punto</strong> del mapa para ver el detalle. Para agregar direcciones que faltan, edítalas en el Sheet o en <strong>Nueva Cotización</strong>.</div></div>',unsafe_allow_html=True)
 
 
+
+# ══════════════════════════════════════════
+# LEADS WHATSAPP
+# ══════════════════════════════════════════
+
+ESTADOS_LEAD = [
+    "Nuevo",
+    "En contacto",
+    "Explicado — sin respuesta",
+    "No interesado",
+    "Pasó a cotización",
+    "Descartado",
+]
+COLOR_LEAD = {
+    "Nuevo":                    "#3B82F6",
+    "En contacto":              "#F59E0B",
+    "Explicado — sin respuesta":"#94A3B8",
+    "No interesado":            "#EF4444",
+    "Pasó a cotización":        "#059669",
+    "Descartado":               "#DC2626",
+}
+
+def get_leads():
+    if "leads_db" not in st.session_state:
+        st.session_state.leads_db = [
+            # Ejemplos iniciales para que no aparezca vacío
+            {"id":"L001","fecha_entrada":"2026-06-10","nombre":"Torres Residencias","contacto":"Luis Torres","telefono":"+57 300 123 4567","como_llego":"WhatsApp","asignado":"RAFAEL TORRES","fecha_asignacion":"2026-06-10","estado":"Pasó a cotización","fecha_cotizacion":"2026-06-15","notas":"Edificio de 80 unidades en Chapinero. Muy interesado.","dias_lead":5,"dias_cotizacion":5},
+            {"id":"L002","fecha_entrada":"2026-06-12","nombre":"Conjunto Los Arrayanes","contacto":"Ana Gómez","telefono":"+57 315 987 6543","como_llego":"WhatsApp","asignado":"LINA CALLE","fecha_asignacion":"2026-06-13","estado":"En contacto","fecha_cotizacion":"","notas":"Habló con administradora. Quiere reunión presencial.","dias_lead":1,"dias_cotizacion":None},
+            {"id":"L003","fecha_entrada":"2026-06-18","nombre":"Ed. Viento del Norte","contacto":"Jhon Reyes","telefono":"+57 311 555 0001","como_llego":"WhatsApp","asignado":"SONIA CASTRO","fecha_asignacion":"2026-06-18","estado":"Explicado — sin respuesta","fecha_cotizacion":"","notas":"Le explicamos el servicio. No ha vuelto a contestar.","dias_lead":0,"dias_cotizacion":None},
+            {"id":"L004","fecha_entrada":"2026-06-20","nombre":"Conjunto Prados del Sur","contacto":"María Herrera","telefono":"+57 320 444 7890","como_llego":"WhatsApp","asignado":"","fecha_asignacion":"","estado":"Nuevo","fecha_cotizacion":"","notas":"Llegó por WhatsApp. Pendiente asignar.","dias_lead":None,"dias_cotizacion":None},
+        ]
+    return st.session_state.leads_db
+
+def pg_leads():
+    hdr("📲","Leads WhatsApp","Seguimiento de contactos entrantes → cotización")
+    u = st.session_state.user
+    es_g = u["rol"] in ["gerente","socio"]
+    leads = get_leads()
+
+    # ── KPIs
+    total   = len(leads)
+    nuevos  = sum(1 for l in leads if l["estado"]=="Nuevo")
+    en_ctc  = sum(1 for l in leads if l["estado"]=="En contacto")
+    cotiz   = sum(1 for l in leads if l["estado"]=="Pasó a cotización")
+    sin_rep = sum(1 for l in leads if l["estado"]=="Explicado — sin respuesta")
+    desc    = sum(1 for l in leads if l["estado"] in ["No interesado","Descartado"])
+    tasa_c  = round(cotiz/total*100) if total else 0
+
+    # Tiempo promedio lead→cotización
+    dias_prom = None
+    tiempos   = [l["dias_cotizacion"] for l in leads if l.get("dias_cotizacion") and l["estado"]=="Pasó a cotización"]
+    if tiempos: dias_prom = round(sum(tiempos)/len(tiempos),1)
+
+    c1,c2,c3,c4,c5,c6 = st.columns(6)
+    c1.markdown(f'<div class="kpi blue"><div class="kpi-lbl">Total leads</div><div class="kpi-val blue">{total}</div><div class="kpi-sub">acumulados</div></div>',unsafe_allow_html=True)
+    c2.markdown(f'<div class="kpi" style="border-bottom:2px solid #3B82F6"><div class="kpi-lbl">🆕 Nuevos</div><div class="kpi-val" style="color:#3B82F6">{nuevos}</div><div class="kpi-sub">sin asignar</div></div>',unsafe_allow_html=True)
+    c3.markdown(f'<div class="kpi" style="border-bottom:2px solid #F59E0B"><div class="kpi-lbl">En contacto</div><div class="kpi-val amber">{en_ctc}</div><div class="kpi-sub">en proceso</div></div>',unsafe_allow_html=True)
+    c4.markdown(f'<div class="kpi" style="border-bottom:2px solid #059669"><div class="kpi-lbl">→ Cotización</div><div class="kpi-val green">{cotiz}</div><div class="kpi-sub">tasa {tasa_c}%</div></div>',unsafe_allow_html=True)
+    c5.markdown(f'<div class="kpi" style="border-bottom:2px solid #94A3B8"><div class="kpi-lbl">Sin respuesta</div><div class="kpi-val" style="color:#94A3B8">{sin_rep}</div><div class="kpi-sub">explicado</div></div>',unsafe_allow_html=True)
+    c6.markdown(f'<div class="kpi" style="border-bottom:2px solid #D97706"><div class="kpi-lbl">T° lead→cotiz</div><div class="kpi-val amber">{f"{dias_prom}d" if dias_prom else "—"}</div><div class="kpi-sub">promedio días</div></div>',unsafe_allow_html=True)
+
+    st.markdown("<br>",unsafe_allow_html=True)
+
+    # ── Tabs
+    tab_lista, tab_nuevo, tab_stats = st.tabs(["📋 Lista de leads","➕ Registrar lead","📊 Estadísticas"])
+
+    # ════════════════════════
+    # TAB 1: LISTA
+    # ════════════════════════
+    with tab_lista:
+        # Filtros
+        cf1,cf2,cf3 = st.columns(3)
+        with cf1:
+            f_estado = st.selectbox("Estado",["Todos"]+ESTADOS_LEAD)
+        with cf2:
+            f_com = st.selectbox("Comercial",["Todos"]+COMS) if es_g else st.selectbox("Comercial",[u.get("comercial","")])
+        with cf3:
+            f_text = st.text_input("🔍 Buscar",placeholder="Nombre, contacto, teléfono...")
+
+        # Filtrar
+        leads_f = leads.copy()
+        if f_estado != "Todos":   leads_f = [l for l in leads_f if l["estado"]==f_estado]
+        if f_com != "Todos":      leads_f = [l for l in leads_f if l.get("asignado","").upper()==f_com.upper()]
+        if f_text.strip():        leads_f = [l for l in leads_f if f_text.lower() in (l.get("nombre","")+l.get("contacto","")+l.get("telefono","")).lower()]
+
+        # Ordenar: nuevos primero, luego por fecha
+        orden = {"Nuevo":0,"En contacto":1,"Explicado — sin respuesta":2,"Pasó a cotización":3,"No interesado":4,"Descartado":5}
+        leads_f = sorted(leads_f, key=lambda x:(orden.get(x["estado"],9), x.get("fecha_entrada","")))
+
+        if not leads_f:
+            st.info("No hay leads con esos filtros.")
+        else:
+            st.markdown(f'<div style="font-size:12px;color:#94A3B8;margin-bottom:10px">{len(leads_f)} leads</div>',unsafe_allow_html=True)
+            for i,lead in enumerate(leads_f):
+                est  = lead["estado"]
+                col  = COLOR_LEAD.get(est,"#94A3B8")
+                asig = lead.get("asignado","") or "Sin asignar"
+                dias = lead.get("dias_cotizacion")
+
+                # Encabezado del card
+                with st.expander(
+                    f"{'🆕' if est=='Nuevo' else '🔥' if est=='En contacto' else '✅' if est=='Pasó a cotización' else '❌' if est in ['No interesado','Descartado'] else '⏸'}"
+                    f"  {lead['nombre']}  ·  {est}  ·  {lead.get('fecha_entrada','')[:10]}"
+                    , expanded=(est in ["Nuevo","En contacto"])
+                ):
+                    c1,c2,c3 = st.columns(3)
+                    c1.markdown(f"**Contacto:** {lead.get('contacto','—')}")
+                    c1.markdown(f"**Tel:** {lead.get('telefono','—')}")
+                    c2.markdown(f"**Llegó vía:** {lead.get('como_llego','WhatsApp')}")
+                    c2.markdown(f"**Asignado a:** {asig}")
+                    c3.markdown(f"**Fecha asignación:** {lead.get('fecha_asignacion','—')[:10] or '—'}")
+                    c3.markdown(f"**Pasó a cotización:** {lead.get('fecha_cotizacion','')[:10] or 'Aún no'}")
+
+                    if lead.get("notas"):
+                        st.markdown(f'<div class="al blue"><div>📝</div><div>{lead["notas"]}</div></div>',unsafe_allow_html=True)
+
+                    # Tiempos
+                    if lead.get("dias_lead") is not None:
+                        d_lead = lead["dias_lead"]
+                        color_t = "#059669" if d_lead<=2 else "#D97706" if d_lead<=7 else "#EF4444"
+                        st.markdown(
+                            f'<div style="display:flex;gap:16px;margin:8px 0;font-size:11.5px">' +
+                            f'<span>⏱ <strong>Respuesta:</strong> <span style="color:{color_t};font-weight:700">{d_lead} días</span> (entrada → asignación)</span>' +
+                            (f'<span>📋 <strong>Lead→cotización:</strong> <span style="color:#059669;font-weight:700">{dias} días</span></span>' if dias else '') +
+                            f'</div>',unsafe_allow_html=True)
+
+                    # Acciones
+                    if u["rol"] in ["gerente","comercial"]:
+                        with st.form(f"upd_lead_{i}_{lead['id']}"):
+                            ca,cb,cc = st.columns(3)
+                            with ca:
+                                nuevo_est = st.selectbox("Cambiar estado",ESTADOS_LEAD,
+                                    index=ESTADOS_LEAD.index(est) if est in ESTADOS_LEAD else 0,
+                                    key=f"est_s_{i}")
+                            with cb:
+                                nuevo_asig = st.selectbox("Reasignar a",["—"]+COMS,
+                                    index=COMS.index(asig)+1 if asig in COMS else 0,
+                                    key=f"asig_s_{i}")
+                            with cc:
+                                nueva_nota = st.text_input("Agregar nota",placeholder="Ej: Llamó y pidió cotización",key=f"nota_s_{i}")
+                            if st.form_submit_button("💾 Actualizar",use_container_width=True):
+                                # Encontrar el lead en la BD original
+                                for l in st.session_state.leads_db:
+                                    if l["id"]==lead["id"]:
+                                        l["estado"] = nuevo_est
+                                        if nuevo_asig != "—":
+                                            if not l.get("asignado") or l["asignado"]=="":
+                                                l["fecha_asignacion"] = datetime.now().strftime("%Y-%m-%d")
+                                                try:
+                                                    fe = datetime.strptime(l["fecha_entrada"],"%Y-%m-%d")
+                                                    l["dias_lead"] = (datetime.now()-fe).days
+                                                except: l["dias_lead"]=0
+                                            l["asignado"] = nuevo_asig
+                                        if nuevo_est == "Pasó a cotización" and not l.get("fecha_cotizacion"):
+                                            l["fecha_cotizacion"] = datetime.now().strftime("%Y-%m-%d")
+                                            try:
+                                                fa = datetime.strptime(l.get("fecha_asignacion",l["fecha_entrada"]),"%Y-%m-%d")
+                                                l["dias_cotizacion"] = (datetime.now()-fa).days
+                                            except: l["dias_cotizacion"]=0
+                                        if nueva_nota.strip():
+                                            l["notas"] = (l.get("notas","") + f" | {datetime.now().strftime('%d %b')}: {nueva_nota}").strip(" | ")
+                                        break
+                                st.success("✅ Lead actualizado"); st.rerun()
+
+    # ════════════════════════
+    # TAB 2: REGISTRAR NUEVO
+    # ════════════════════════
+    with tab_nuevo:
+        if u["rol"] == "socio":
+            st.info("Los socios tienen acceso de solo visualización.")
+        else:
+            st.markdown("**Registrar nuevo lead de WhatsApp**")
+            with st.form("nuevo_lead_form"):
+                c1,c2 = st.columns(2)
+                with c1:
+                    nl_nombre  = st.text_input("Nombre del edificio / conjunto *",placeholder="Ej: Conjunto Prados del Norte")
+                    nl_ctc     = st.text_input("Nombre del contacto *",placeholder="Administrador, propietario...")
+                    nl_tel     = st.text_input("Teléfono / WhatsApp *",placeholder="+57 300 000 0000")
+                    nl_como    = st.selectbox("¿Cómo llegó?",["WhatsApp","Referido","Instagram","Facebook","Web","Llamada directa","Otro"])
+                with c2:
+                    nl_fecha   = st.date_input("Fecha de entrada",value=datetime.now().date())
+                    nl_asig    = st.selectbox("Asignar a comercial",["Sin asignar"]+COMS)
+                    nl_notas   = st.text_area("Notas iniciales",height=100,placeholder="Qué dijo, cuántas unidades, ubicación, necesidad principal...")
+                    nl_est     = st.selectbox("Estado inicial",["Nuevo","En contacto"])
+
+                if st.form_submit_button("📲 Registrar lead",use_container_width=True):
+                    if not nl_nombre.strip() or not nl_ctc.strip() or not nl_tel.strip():
+                        st.error("Nombre del edificio, contacto y teléfono son obligatorios")
+                    else:
+                        nuevo_id = f"L{len(st.session_state.leads_db)+1:03d}"
+                        fecha_str = nl_fecha.strftime("%Y-%m-%d")
+                        asig_final = "" if nl_asig=="Sin asignar" else nl_asig
+                        dias_l = (datetime.now().date()-nl_fecha).days if asig_final else None
+                        st.session_state.leads_db.append({
+                            "id": nuevo_id,
+                            "fecha_entrada":   fecha_str,
+                            "nombre":          nl_nombre.strip(),
+                            "contacto":        nl_ctc.strip(),
+                            "telefono":        nl_tel.strip(),
+                            "como_llego":      nl_como,
+                            "asignado":        asig_final,
+                            "fecha_asignacion":datetime.now().strftime("%Y-%m-%d") if asig_final else "",
+                            "estado":          nl_est,
+                            "fecha_cotizacion":"",
+                            "notas":           nl_notas.strip(),
+                            "dias_lead":       dias_l,
+                            "dias_cotizacion": None,
+                        })
+                        st.success(f"✅ Lead **{nl_nombre}** registrado — ID {nuevo_id}")
+                        if asig_final:
+                            st.info(f"📲 Asignado a {asig_final}")
+                        st.rerun()
+
+    # ════════════════════════
+    # TAB 3: ESTADÍSTICAS
+    # ════════════════════════
+    with tab_stats:
+        st.markdown("#### 📊 Rendimiento por comercial")
+        if not leads:
+            st.info("Sin datos aún."); return
+
+        # Tabla por comercial
+        stats_com = {}
+        for l in leads:
+            com = l.get("asignado","") or "Sin asignar"
+            if com not in stats_com:
+                stats_com[com] = {"total":0,"cotizados":0,"sin_resp":0,"descartados":0,"dias_lead":[],"dias_cotiz":[]}
+            s = stats_com[com]
+            s["total"] += 1
+            if l["estado"]=="Pasó a cotización":
+                s["cotizados"] += 1
+                if l.get("dias_cotizacion"): s["dias_cotiz"].append(l["dias_cotizacion"])
+            elif l["estado"]=="Explicado — sin respuesta": s["sin_resp"] += 1
+            elif l["estado"] in ["No interesado","Descartado"]: s["descartados"] += 1
+            if l.get("dias_lead") is not None: s["dias_lead"].append(l["dias_lead"])
+
+        rows = []
+        for com, s in sorted(stats_com.items()):
+            rows.append({
+                "Comercial":         com.split()[0] if com!="Sin asignar" else "⚠️ Sin asignar",
+                "Leads asignados":   s["total"],
+                "→ Cotización":      s["cotizados"],
+                "Tasa conversión":   f"{round(s['cotizados']/s['total']*100)}%" if s["total"] else "—",
+                "Sin respuesta":     s["sin_resp"],
+                "T° asignación (d)": f"{round(sum(s['dias_lead'])/len(s['dias_lead']),1)}" if s["dias_lead"] else "—",
+                "T° lead→cotiz (d)": f"{round(sum(s['dias_cotiz'])/len(s['dias_cotiz']),1)}" if s["dias_cotiz"] else "—",
+            })
+
+        import pandas as pd
+        df_s = pd.DataFrame(rows)
+        st.dataframe(df_s, use_container_width=True, hide_index=True)
+
+        # Gráfica de barras — leads por estado y comercial
+        st.markdown("<br>",unsafe_allow_html=True)
+        if len(leads)>0:
+            df_leads = pd.DataFrame(leads)
+            if "estado" in df_leads.columns and "asignado" in df_leads.columns:
+                df_grupo = df_leads.groupby(["asignado","estado"]).size().reset_index(name="n")
+                df_grupo["Com"] = df_grupo["asignado"].str.split().str[0]
+                fig_l = px.bar(df_grupo, x="Com", y="n", color="estado",
+                    title="Leads por comercial y estado",
+                    color_discrete_map=COLOR_LEAD,
+                    labels={"n":"","Com":"","estado":"Estado"},
+                    barmode="stack")
+                fig_l.update_layout(paper_bgcolor="white",plot_bgcolor="white",
+                    font_family="Inter",title_font_family="Space Grotesk",
+                    margin=dict(t=40,b=6,l=0,r=0),
+                    legend=dict(orientation="h",yanchor="bottom",y=1.02))
+                fig_l.update_traces(marker_line_width=0)
+                st.plotly_chart(fig_l, use_container_width=True)
+
+        # Alertas
+        sin_asig = [l for l in leads if not l.get("asignado") and l["estado"]=="Nuevo"]
+        sin_resp_7 = [l for l in leads if l["estado"]=="Explicado — sin respuesta"
+                      and l.get("dias_lead",0) is not None and (l.get("dias_lead",0) or 0)>7]
+        if sin_asig:
+            st.markdown(f'<div class="al red"><div>🚨</div><div><strong>{len(sin_asig)} leads SIN asignar:</strong> {", ".join(l["nombre"] for l in sin_asig)}</div></div>',unsafe_allow_html=True)
+        if sin_resp_7:
+            st.markdown(f'<div class="al amber"><div>⏰</div><div><strong>{len(sin_resp_7)} leads sin respuesta hace +7 días.</strong> Considera hacer un último intento o descartar.</div></div>',unsafe_allow_html=True)
+
+
 # ══════════════════════════════════════════
 # MAIN
 # ══════════════════════════════════════════
@@ -1899,5 +2181,5 @@ else:
         "Asistente IA":pg_asistente,"Encuesta Prospecto":pg_encuesta,
         "Calendario":pg_calendario,"Configuración":pg_configuracion,
         "Informe Semanal":pg_informe_semanal,"Pagos y Finanzas":pg_pagos,
-        "Auditoría":pg_auditoria,"Pipeline":pg_pipeline,"Usuarios":pg_usuarios,"Mapa de Proyectos":pg_mapa,
+        "Auditoría":pg_auditoria,"Pipeline":pg_pipeline,"Usuarios":pg_usuarios,"Mapa de Proyectos":pg_mapa,"Leads WhatsApp":pg_leads,
     }.get(pg,pg_dashboard)()
