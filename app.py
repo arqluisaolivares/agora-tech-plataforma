@@ -1074,23 +1074,392 @@ Adultos: {adultos or "No reportado"} | Incidentes: {incidentes or "Ninguno"}
                 st.markdown("---"); st.markdown(r)
 
 def pg_calendario():
-    hdr("📅","Calendario","Agenda y asambleas próximas")
-    c1,c2=st.columns([2,1])
-    with c1:
-        with st.form("cal_f"):
-            c1i,c2i=st.columns(2)
-            with c1i: edif=st.text_input("Edificio"); tipo=st.selectbox("Tipo",["Reunión consejo","Asamblea","Llamada","Visita Alto 61","Firma contrato","Inicio obra","Entrega","Otro"])
-            with c2i: fecha_a=st.date_input("Fecha",value=datetime.now()); hora_a=st.time_input("Hora")
-            titulo_a=st.text_input("Título *"); notas_a=st.text_area("Notas",height=55)
-            if st.form_submit_button("📅 Guardar",use_container_width=True):
-                if titulo_a: st.success(f"✅ {titulo_a} — {fecha_a.strftime('%d %b')}")
-                else: st.error("Título obligatorio")
-    with c2:
-        st.markdown("#### 🔥 Próximas semanas")
-        urgentes=[("Country 136","Asamblea jun 27","red"),("Park 104","Asamblea jun 13","red"),("Ed. Risaralda","Asamblea extraordinaria jul","red"),("Ed. Sahara","Asamblea jun 13","amber"),("Ed. Camila","Reunión consejo jun 9","amber"),("Ed. Urapanes","Reunión consejo jun 16","amber"),("Ed. El Cerro","Visita Alto 61 jun 11","blue"),("Ed. Cesanne","Asamblea jul 16","blue")]
-        for n,d,c in urgentes:
-            ic={"red":"🔥","amber":"🟡","blue":"💡"}[c]
-            st.markdown(f'<div class="al {c}" style="padding:8px 11px;margin-bottom:5px"><div style="font-size:13px">{ic}</div><div><strong style="font-size:12px">{n}</strong><div style="font-size:10.5px">{d}</div></div></div>',unsafe_allow_html=True)
+    hdr("📅","Calendario Comercial","Agenda semanal · Asambleas · Seguimiento de edificios")
+
+    # ── Inicializar eventos base
+    if "eventos_cal" not in st.session_state:
+        st.session_state.eventos_cal = [
+            # Comité de gerencia — todos los martes 4:00–5:30pm (recurrente)
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-06-30","hora":"16:00","fin":"17:30","notas":"Socios: Carlos Torres y Carlos Méndez","color":"#7C3AED","icono":"🏢"},
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-07-07","hora":"16:00","fin":"17:30","notas":"Socios: Carlos Torres y Carlos Méndez","color":"#7C3AED","icono":"🏢"},
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-07-14","hora":"16:00","fin":"17:30","notas":"Socios: Carlos Torres y Carlos Méndez","color":"#7C3AED","icono":"🏢"},
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-07-21","hora":"16:00","fin":"17:30","notas":"Socios: Carlos Torres y Carlos Méndez","color":"#7C3AED","icono":"🏢"},
+            {"titulo":"Comité de Gerencia","tipo":"Comité","fecha":"2026-07-28","hora":"16:00","fin":"17:30","notas":"Socios: Carlos Torres y Carlos Méndez","color":"#7C3AED","icono":"🏢"},
+            # Asambleas críticas
+            {"titulo":"Asamblea Country 136","tipo":"Asamblea","fecha":"2026-06-27","hora":"18:00","fin":"20:00","notas":"🔥 CRÍTICA — Gestiona Luisa. Cierre probable.","color":"#EF4444","icono":"🔥"},
+            {"titulo":"Asamblea Park 104","tipo":"Asamblea","fecha":"2026-06-13","hora":"18:00","fin":"20:00","notas":"🔥 Rafael — Confirmar nueva admón.","color":"#EF4444","icono":"🔥"},
+            {"titulo":"Asamblea Edificio Sahara","tipo":"Asamblea","fecha":"2026-06-13","hora":"17:00","fin":"19:00","notas":"Rafael — Confirmar si va propuesta Ágora","color":"#EF4444","icono":"🔥"},
+            {"titulo":"Reunión consejo Camila","tipo":"Reunión consejo","fecha":"2026-06-09","hora":"18:00","fin":"19:30","notas":"Lina — Decidirán proveedor","color":"#D97706","icono":"📋"},
+            {"titulo":"Visita Alto 61 — Ed. El Cerro","tipo":"Visita Alto 61","fecha":"2026-06-11","hora":"10:00","fin":"11:30","notas":"Rafael — Consejo visita edificio modelo","color":"#0D9488","icono":"⭐"},
+            {"titulo":"Reunión consejo Urapanes","tipo":"Reunión consejo","fecha":"2026-06-16","hora":"18:00","fin":"19:30","notas":"Rafael — Preseleccionados entre 3","color":"#D97706","icono":"📋"},
+            {"titulo":"Asamblea Ed. Cesanne","tipo":"Asamblea","fecha":"2026-07-16","hora":"18:00","fin":"20:00","notas":"Rafael — Germán González impulsa","color":"#D97706","icono":"🟡"},
+            {"titulo":"Asamblea Ed. Los Pinos","tipo":"Asamblea","fecha":"2026-07-16","hora":"19:30","fin":"21:00","notas":"Lina — Asamblea extraordinaria nocturna","color":"#D97706","icono":"🟡"},
+            {"titulo":"Asamblea Ed. Altos del Retiro","tipo":"Asamblea","fecha":"2026-07-16","hora":"20:00","fin":"22:00","notas":"Lina — Extraordinaria tentativa","color":"#D97706","icono":"🟡"},
+            {"titulo":"Asamblea Ed. Risaralda","tipo":"Asamblea","fecha":"2026-07-25","hora":"18:00","fin":"20:00","notas":"🔥 Rafael/Luisa — Asamblea extraordinaria antes jul 30","color":"#EF4444","icono":"🔥"},
+        ]
+
+    COLORES = {"Asamblea":"#EF4444","Reunión consejo":"#D97706","Visita Alto 61":"#0D9488",
+               "Comité":"#7C3AED","Llamada":"#2563EB","Firma contrato":"#059669",
+               "Inicio obra":"#059669","Entrega":"#10B981","Otro":"#64748B"}
+    ICONOS  = {"Asamblea":"🏛️","Reunión consejo":"📋","Visita Alto 61":"⭐",
+               "Comité":"🏢","Llamada":"📞","Firma contrato":"📝",
+               "Inicio obra":"🔨","Entrega":"🎉","Otro":"📅"}
+
+    # ── Tabs principales
+    tab_sem, tab_mes, tab_add, tab_sug = st.tabs([
+        "📆 Semana actual",
+        "📅 Vista mensual",
+        "➕ Agregar evento",
+        "💡 Sugerencias IA"
+    ])
+
+    hoy   = datetime.now().date()
+    lunes = hoy - timedelta(days=hoy.weekday())
+
+    # ════════════════════════════════════════
+    # TAB 1: CALENDARIO SEMANAL
+    # ════════════════════════════════════════
+    with tab_sem:
+        # Navegación de semana
+        c_prev, c_titulo, c_next = st.columns([1,3,1])
+        with c_prev:
+            if st.button("← Semana anterior", key="sem_prev"):
+                st.session_state["sem_offset"] = st.session_state.get("sem_offset",0) - 1
+                st.rerun()
+        offset = st.session_state.get("sem_offset", 0)
+        lunes_vis = lunes + timedelta(weeks=offset)
+        dias_vis  = [lunes_vis + timedelta(days=i) for i in range(7)]
+        with c_titulo:
+            st.markdown(f"<div style='text-align:center;font-family:Space Grotesk,sans-serif;"
+                        f"font-weight:700;font-size:14px;color:#0F172A;padding:8px 0'>"
+                        f"Semana del {lunes_vis.strftime('%d %b')} al "
+                        f"{(lunes_vis+timedelta(days=6)).strftime('%d %b %Y')}</div>",
+                        unsafe_allow_html=True)
+        with c_next:
+            if st.button("Semana siguiente →", key="sem_next"):
+                st.session_state["sem_offset"] = st.session_state.get("sem_offset",0) + 1
+                st.rerun()
+
+        DIAS_NOM = ["LUN","MAR","MIÉ","JUE","VIE","SÁB","DOM"]
+        HORAS_CAL = list(range(8, 21))  # 8am a 8pm
+
+        # Filtrar eventos de la semana visible
+        evs_sem = {d: [] for d in dias_vis}
+        for e in st.session_state.eventos_cal:
+            try:
+                fd = datetime.strptime(str(e["fecha"])[:10], "%Y-%m-%d").date()
+                if fd in evs_sem: evs_sem[fd].append(e)
+            except: pass
+
+        # Construir HTML del calendario
+        col_w = 100/8
+        th = f"<td style='width:{col_w*0.55:.1f}%;background:#F8FAFC;border:1px solid #E2E8F0;padding:5px 3px;font-size:9px;color:#94A3B8;text-align:center;vertical-align:middle'></td>"
+        for i,d in enumerate(dias_vis):
+            es_hoy = (d == hoy)
+            bg_h   = "#EFF6FF" if es_hoy else "#F8FAFC"
+            col_d  = "#1D4ED8" if es_hoy else "#334155"
+            fw_d   = "800" if es_hoy else "600"
+            num    = d.strftime('%d')
+            dot_hoy= f"<div style='width:5px;height:5px;border-radius:50%;background:#2563EB;margin:1px auto 0'></div>" if es_hoy else ""
+            th += (f"<td style='background:{bg_h};border:1px solid #E2E8F0;"
+                   f"padding:7px 3px;text-align:center;width:{col_w:.1f}%'>"
+                   f"<div style='font-size:9.5px;font-weight:{fw_d};color:{col_d};"
+                   f"font-family:Space Grotesk,sans-serif;letter-spacing:.5px'>{DIAS_NOM[i]}</div>"
+                   f"<div style='font-size:15px;font-weight:{fw_d};color:{col_d};"
+                   f"font-family:Space Grotesk,sans-serif'>{num}</div>{dot_hoy}</td>")
+
+        filas_html = ""
+        for h in HORAS_CAL:
+            hora_lbl = f"{h:02d}:00"
+            fila = (f"<td style='background:#FAFAFA;border:1px solid #F1F5F9;"
+                    f"padding:3px 5px;font-size:9px;color:#CBD5E1;text-align:right;"
+                    f"white-space:nowrap;vertical-align:top'>{hora_lbl}</td>")
+            for d in dias_vis:
+                celdas = ""
+                for e in evs_sem[d]:
+                    h_ev = int(str(e.get("hora","00:00"))[:2])
+                    if h_ev == h:
+                        fin  = str(e.get("fin",""))
+                        col  = e.get("color","#94A3B8")
+                        ico  = e.get("icono","📅")
+                        tit  = str(e["titulo"])[:20]
+                        nota = str(e.get("notas",""))[:60]
+                        celdas += (f"<div title='{nota}' style='background:{col}18;"
+                                   f"border-left:3px solid {col};border-radius:0 5px 5px 0;"
+                                   f"padding:3px 5px;margin-bottom:2px;cursor:default'>"
+                                   f"<div style='font-size:9.5px;font-weight:700;color:{col};"
+                                   f"white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>"
+                                   f"{ico} {tit}</div>"
+                                   f"<div style='font-size:8.5px;color:#64748B'>"
+                                   f"{e.get('hora','')}{'–'+fin if fin else ''}</div>"
+                                   f"</div>")
+                bg_c = "#FAFBFF" if d==hoy else "white"
+                fila += (f"<td style='background:{bg_c};border:1px solid #F1F5F9;"
+                         f"padding:2px;vertical-align:top;min-height:34px'>{celdas}</td>")
+            filas_html += f"<tr>{fila}</tr>"
+
+        html_cal = f"""
+        <div style='overflow-x:auto;border-radius:10px;border:1px solid #E2E8F0;
+             box-shadow:0 1px 3px rgba(15,23,42,.07);margin-bottom:10px'>
+          <table style='width:100%;border-collapse:collapse;background:white;min-width:600px'>
+            <thead><tr>{th}</tr></thead>
+            <tbody>{filas_html}</tbody>
+          </table>
+        </div>"""
+        st.markdown(html_cal, unsafe_allow_html=True)
+
+        # Leyenda
+        st.markdown("""<div style='display:flex;flex-wrap:wrap;gap:14px;font-size:11px;color:#64748B;margin-top:4px'>
+          <span style='display:flex;align-items:center;gap:5px'><span style='width:10px;height:10px;border-radius:2px;background:#7C3AED;display:inline-block'></span>🏢 Comité de Gerencia (martes 4–5:30pm)</span>
+          <span style='display:flex;align-items:center;gap:5px'><span style='width:10px;height:10px;border-radius:2px;background:#EF4444;display:inline-block'></span>🔥 Asamblea crítica</span>
+          <span style='display:flex;align-items:center;gap:5px'><span style='width:10px;height:10px;border-radius:2px;background:#D97706;display:inline-block'></span>📋 Reunión consejo</span>
+          <span style='display:flex;align-items:center;gap:5px'><span style='width:10px;height:10px;border-radius:2px;background:#0D9488;display:inline-block'></span>⭐ Visita Alto 61</span>
+          <span style='display:flex;align-items:center;gap:5px'><span style='width:10px;height:10px;border-radius:2px;background:#2563EB;display:inline-block'></span>📞 Llamada/seguimiento</span>
+        </div>""", unsafe_allow_html=True)
+
+        # Lista de eventos de la semana
+        evs_lista = []
+        for d in dias_vis:
+            for e in evs_sem[d]:
+                evs_lista.append((d, e))
+        evs_lista.sort(key=lambda x:(x[0], x[1].get("hora","")))
+        if evs_lista:
+            st.markdown("**Eventos de esta semana:**")
+            for d, e in evs_lista:
+                col_e = e.get("color","#94A3B8")
+                st.markdown(
+                    f'<div style="background:white;border:1px solid #E2E8F0;border-left:3px solid {col_e};'
+                    f'border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:5px;display:flex;gap:10px;align-items:center">'
+                    f'<div style="min-width:44px;text-align:center"><div style="font-size:9px;font-weight:700;color:#94A3B8;text-transform:uppercase">{d.strftime("%a")}</div>'
+                    f'<div style="font-size:15px;font-weight:700;color:#0F172A;font-family:Space Grotesk,sans-serif">{d.strftime("%d")}</div></div>'
+                    f'<div style="flex:1"><div style="font-size:12.5px;font-weight:700;color:#0F172A">{e["icono"]} {e["titulo"]}</div>'
+                    f'<div style="font-size:11px;color:#64748B;margin-top:2px">{e.get("hora","")}{"–"+e.get("fin","") if e.get("fin") else ""} · {e.get("notas","")[:80]}</div></div>'
+                    f'</div>', unsafe_allow_html=True)
+        else:
+            st.info("No hay eventos programados esta semana. Agrégalos en la pestaña ➕")
+
+    # ════════════════════════════════════════
+    # TAB 2: VISTA MENSUAL
+    # ════════════════════════════════════════
+    with tab_mes:
+        import calendar
+        # Navegación de mes
+        if "mes_offset" not in st.session_state: st.session_state["mes_offset"] = 0
+        cp, ct, cn = st.columns([1,3,1])
+        with cp:
+            if st.button("← Mes anterior", key="mes_prev"):
+                st.session_state["mes_offset"] -= 1; st.rerun()
+        mes_off = st.session_state["mes_offset"]
+        año_v   = (hoy.replace(day=1) + timedelta(days=32*mes_off)).year
+        mes_v   = (hoy.replace(day=1) + timedelta(days=32*mes_off)).month
+        MESES   = ["","Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                   "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+        with ct:
+            st.markdown(f"<div style='text-align:center;font-family:Space Grotesk,sans-serif;"
+                        f"font-weight:700;font-size:15px;color:#0F172A;padding:8px 0'>"
+                        f"{MESES[mes_v]} {año_v}</div>", unsafe_allow_html=True)
+        with cn:
+            if st.button("Mes siguiente →", key="mes_next"):
+                st.session_state["mes_offset"] += 1; st.rerun()
+
+        # Construir grilla mensual
+        cal_m = calendar.monthcalendar(año_v, mes_v)
+        dias_header = "<tr>" + "".join(
+            f"<th style='background:#F8FAFC;border:1px solid #E2E8F0;padding:7px;text-align:center;"
+            f"font-size:10px;font-weight:700;color:#64748B;letter-spacing:1px'>{d}</th>"
+            for d in ["LUN","MAR","MIÉ","JUE","VIE","SÁB","DOM"]) + "</tr>"
+
+        # Indexar eventos por fecha
+        evs_idx = {}
+        for e in st.session_state.eventos_cal:
+            try:
+                fd = str(e["fecha"])[:10]
+                evs_idx.setdefault(fd, []).append(e)
+            except: pass
+
+        filas_mes = ""
+        for semana in cal_m:
+            fila = ""
+            for dia in semana:
+                if dia == 0:
+                    fila += "<td style='background:#FAFAFA;border:1px solid #F1F5F9;min-height:80px'></td>"
+                else:
+                    fecha_str = f"{año_v}-{mes_v:02d}-{dia:02d}"
+                    es_hoy_m  = (datetime(año_v,mes_v,dia).date() == hoy)
+                    evs_dia   = evs_idx.get(fecha_str, [])
+                    bg_dia    = "#EFF6FF" if es_hoy_m else "white"
+                    num_style = ("font-weight:800;color:#1D4ED8;background:#DBEAFE;"
+                                 "border-radius:50%;width:22px;height:22px;display:inline-flex;"
+                                 "align-items:center;justify-content:center") if es_hoy_m else "color:#334155;font-weight:600"
+                    evs_html = ""
+                    for e in evs_dia[:3]:
+                        col_e = e.get("color","#94A3B8")
+                        evs_html += (f"<div style='background:{col_e}18;border-left:2px solid {col_e};"
+                                     f"border-radius:0 3px 3px 0;padding:2px 4px;margin-top:2px;"
+                                     f"font-size:9px;font-weight:600;color:{col_e};"
+                                     f"overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>"
+                                     f"{e.get('icono','📅')} {str(e['titulo'])[:16]}</div>")
+                    if len(evs_dia)>3:
+                        evs_html += f"<div style='font-size:8px;color:#94A3B8;margin-top:1px'>+{len(evs_dia)-3} más</div>"
+                    fila += (f"<td style='background:{bg_dia};border:1px solid #E2E8F0;"
+                             f"padding:6px;vertical-align:top;min-height:80px;cursor:default'>"
+                             f"<div style='font-size:12px;{num_style};margin-bottom:3px'>{dia}</div>"
+                             f"{evs_html}</td>")
+            filas_mes += f"<tr>{fila}</tr>"
+
+        html_mes = f"""
+        <div style='overflow-x:auto;border-radius:10px;border:1px solid #E2E8F0;
+             box-shadow:0 1px 3px rgba(15,23,42,.07)'>
+          <table style='width:100%;border-collapse:collapse;background:white'>
+            <thead>{dias_header}</thead>
+            <tbody>{filas_mes}</tbody>
+          </table>
+        </div>"""
+        st.markdown(html_mes, unsafe_allow_html=True)
+
+    # ════════════════════════════════════════
+    # TAB 3: AGREGAR EVENTO
+    # ════════════════════════════════════════
+    with tab_add:
+        u_cal = st.session_state.user
+        st.markdown("**Agregar evento al calendario**")
+        with st.form("cal_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                titulo_a = st.text_input("Título *", placeholder="Ej: Asamblea Edificio Camila")
+                edif_a   = st.text_input("Edificio (opcional)")
+                tipo_a   = st.selectbox("Tipo", list(COLORES.keys()))
+                notas_a  = st.text_area("Notas / Observaciones", height=80,
+                    placeholder="Detalles, quién asiste, qué preparar...")
+            with c2:
+                fecha_a  = st.date_input("Fecha", value=hoy)
+                hora_ini = st.selectbox("Hora inicio",
+                    [f"{h:02d}:{m:02d}" for h in range(7,22) for m in [0,30]], index=18)
+                hora_fin = st.selectbox("Hora fin",
+                    [f"{h:02d}:{m:02d}" for h in range(7,23) for m in [0,30]], index=21)
+                if u_cal["rol"] in ["gerente","socio"]:
+                    com_a = st.selectbox("Comercial responsable", ["—"]+COMS)
+                else:
+                    com_a = u_cal.get("comercial","")
+            if st.form_submit_button("📅 Agregar al calendario", use_container_width=True):
+                if not titulo_a.strip():
+                    st.error("El título es obligatorio")
+                else:
+                    nuevo_ev = {
+                        "titulo": titulo_a, "tipo": tipo_a,
+                        "fecha": fecha_a.isoformat(),
+                        "hora": hora_ini, "fin": hora_fin,
+                        "notas": notas_a,
+                        "color": COLORES.get(tipo_a,"#64748B"),
+                        "icono": ICONOS.get(tipo_a,"📅"),
+                        "edificio": edif_a, "comercial": com_a,
+                    }
+                    st.session_state.eventos_cal.append(nuevo_ev)
+                    st.success(f"✅ **{titulo_a}** agregado para el {fecha_a.strftime('%d %b %Y')} a las {hora_ini}")
+                    # Navegar a la semana del evento
+                    ev_date = fecha_a
+                    diff_weeks = (ev_date - hoy).days // 7
+                    st.session_state["sem_offset"] = diff_weeks
+                    st.rerun()
+
+        # Lista de todos los eventos
+        if st.session_state.eventos_cal:
+            st.markdown("---")
+            st.markdown("**Todos los eventos programados:**")
+            evs_sorted = sorted(st.session_state.eventos_cal,
+                                key=lambda x:(str(x.get("fecha","")), str(x.get("hora",""))))
+            for i, e in enumerate(evs_sorted):
+                col_e = e.get("color","#94A3B8")
+                c1, c2 = st.columns([5,1])
+                with c1:
+                    st.markdown(
+                        f'<div style="border-left:3px solid {col_e};padding:7px 12px;margin-bottom:4px">'
+                        f'<span style="font-size:12.5px;font-weight:600;color:#0F172A">'
+                        f'{e["icono"]} {e["titulo"]}</span> '
+                        f'<span style="font-size:11px;color:#94A3B8">· {str(e.get("fecha",""))[:10]} {e.get("hora","")}–{e.get("fin","")}</span>'
+                        f'<br><span style="font-size:11px;color:#64748B">{e.get("notas","")[:80]}</span>'
+                        f'</div>', unsafe_allow_html=True)
+                with c2:
+                    if st.button("🗑", key=f"del_ev_{i}", help="Eliminar"):
+                        st.session_state.eventos_cal.pop(i)
+                        st.rerun()
+
+    # ════════════════════════════════════════
+    # TAB 4: SUGERENCIAS IA
+    # ════════════════════════════════════════
+    with tab_sug:
+        st.markdown("#### 💡 Sugerencias de seguimiento por edificio")
+        df_c = mis_proyectos()
+
+        # Sugerencias fijas basadas en datos reales del CRM
+        SUGERENCIAS = [
+            ("🔥","COUNTRY 136","Rafael Torres","Asamblea jun 27 — preparar presentación ejecutiva. Gestiona Luisa. Llevar 3 referencias de edificios similares.","#EF4444"),
+            ("🔥","PARK 104","Rafael Torres","Asamblea jun 13 — hay nuevo administrador. Confirmar quórum y si Ágora está en la agenda de proveedores.","#EF4444"),
+            ("🔥","EDIFICIO RISARALDA","Rafael Torres","Asamblea extraordinaria antes jul 30 — fecha por confirmar. Llamar esta semana a Joaquín De Bedout.","#EF4444"),
+            ("🟡","EDIFICIO SAHARA","Rafael Torres","Asamblea jun 13 — confirmar si va propuesta Ágora. Enviar modificaciones actualizadas antes del lunes.","#D97706"),
+            ("🟡","EDIFICIO NOMAD","Rafael Torres","David Conde tiene cotización rival más económica. Agendar reunión para comparar y mostrar diferenciadores (financiación 100%).","#D97706"),
+            ("🟡","EDIFICIO CAMILA","Lina Calle","Reunión consejo jun 9 — Javier Oviedo. Llevar propuesta con costos vs vigilancia actual.","#D97706"),
+            ("🟡","EDIFICIO EL CERRO","Rafael Torres","Visita Alto 61 jun 11 — consejo ya aceptó ir. Preparar recorrido: mostrar app, pin, acceso vehicular.","#D97706"),
+            ("🟡","EDIFICIO AVANTI","Rafael Torres","Presidente regresa en julio. Agendar reunión de cierre para primera semana de julio.","#D97706"),
+            ("🟡","EDIFICIO URAPANES","Rafael Torres","Preseleccionados entre 3. Reunión consejo jun 16. Llevar análisis financiero vs competidores.","#D97706"),
+            ("🔵","BOX OFFICE","Sonia Castro","Stand-by — Aprobaron automatización. Reactivar en septiembre cuando vence vigilancia. Agendar llamada para agosto.","#0EA5E9"),
+            ("🔵","EDIFICIO ZAPPAN 109","Sonia Castro","Stand-by — Vencimiento vigilancia noviembre. Contactar antes de agosto para preparar contrato.","#0EA5E9"),
+            ("🔵","EDIFICIO SAN MARCOS","Sonia Castro","Están definiendo retirar vigilantes. Contrato vence oct. Contactar HOY — oportunidad de cierre anticipado.","#0EA5E9"),
+            ("💡","EDIFICIO LOS PINOS","Lina Calle","Asamblea extraordinaria tentativa jul 16. Confirmar con Daniel Sierra. Llevar pólizas y cubrimientos.","#6366F1"),
+            ("💡","EDIFICIO BARCELO NA","Sonia Castro","Recibiendo cotizaciones hasta junio. Hacer seguimiento esta semana — confirmar si Ágora está en shortlist.","#6366F1"),
+            ("💡","OLIVAR","Rafael Torres","Reunión consejo 11 jun. Sin avances informados. Llamar a Rafael para actualizar estado.","#6366F1"),
+        ]
+
+        # Filtros
+        cf1, cf2 = st.columns(2)
+        with cf1:
+            filtro_prior = st.selectbox("Prioridad", ["Todas","🔥 Críticas","🟡 Importantes","🔵 Stand-by","💡 Seguimiento"])
+        with cf2:
+            if st.session_state.user["rol"] in ["gerente","socio"]:
+                filtro_com_s = st.selectbox("Comercial", ["Todos"]+COMS)
+            else:
+                filtro_com_s = st.session_state.user.get("comercial","Todos")
+
+        for ico, edif, com, sugerencia, color in SUGERENCIAS:
+            if filtro_prior != "Todas" and not filtro_prior.startswith(ico):
+                continue
+            if filtro_com_s != "Todos" and com.upper() not in filtro_com_s.upper():
+                continue
+            st.markdown(f"""
+            <div style='background:white;border:1px solid #E2E8F0;border-left:4px solid {color};
+                 border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:8px'>
+              <div style='display:flex;justify-content:space-between;align-items:flex-start'>
+                <div style='font-size:13px;font-weight:700;color:#0F172A'>{ico} {edif}</div>
+                <span style='font-size:10.5px;color:#94A3B8;background:#F8FAFC;padding:2px 8px;
+                     border-radius:20px;border:1px solid #E2E8F0'>{com.split()[0]}</span>
+              </div>
+              <div style='font-size:12px;color:#334155;margin-top:5px;line-height:1.6'>{sugerencia}</div>
+            </div>""", unsafe_allow_html=True)
+
+        # Generar sugerencias con IA
+        st.markdown("---")
+        if st.button("🤖 Generar plan de acción personalizado con IA", use_container_width=True):
+            if not ai_ok():
+                st.error("Activa la IA en ⚙️ Configuración")
+            else:
+                df_act = df_c[df_c["estado"].isin(["evaluacion_consejo","negociacion"])]
+                ctx = df_act[["nombre","comercial","estado","lastNote","totalNum"]].to_string()
+                prompt = f"""Genera un plan de acción semanal para el equipo comercial de Ágora Tech.
+
+Proyectos en evaluación activa:
+{ctx}
+
+Formato por comercial:
+## RAFAEL TORRES — Acciones esta semana
+## LINA CALLE — Acciones esta semana  
+## SONIA CASTRO — Acciones esta semana
+## ALBERTO FERRER — Acciones esta semana
+
+Para cada edificio: acción concreta, qué decir, qué preparar. Máx 3 líneas por edificio. Usa • para bullets."""
+                with st.spinner("Generando plan de acción..."):
+                    resp = ask_ai(prompt, max_tokens=2000)
+                st.markdown(resp)
+
 
 def pg_configuracion():
     u=st.session_state.user; es_g=u["rol"]=="gerente"
