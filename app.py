@@ -1166,295 +1166,109 @@ def pg_pipeline():
 
 def pg_usuarios():
     hdr("👥","Usuarios","Administrar accesos")
-    usuarios=get_usuarios()
-    for uk,ud in usuarios.items():
-        activo=ud.get("activo",True)
-        cols=st.columns([2,2,1.5,1,1,1])
-        cols[0].markdown(f"**{ud['nombre']}**"); cols[1].markdown(f"`{uk}`")
-        cols[2].markdown(ud["rol"].capitalize())
-        cols[3].markdown(f'<span class="tag {"tag-g" if activo else "tag-r"}">{"Activo" if activo else "Inactivo"}</span>',unsafe_allow_html=True)
-        if cols[4].button("✏️",key=f"e_{uk}"): st.session_state["eu"]=uk
-        if cols[5].button("🔒" if activo else "🔓",key=f"t_{uk}"):
-            st.session_state.usuarios_db[uk]["activo"]=not activo; st.rerun()
-        st.markdown('<div style="border-bottom:1px solid #E2E8F0;margin:4px 0"></div>',unsafe_allow_html=True)
-    eu=st.session_state.get("eu","")
+    usuarios = get_usuarios()
+
+    # Tabla de usuarios
+    st.markdown("""<div style='display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr 100px 100px;
+        gap:6px;padding:8px 12px;background:#F8FAFC;border-radius:8px;margin-bottom:6px;
+        font-size:10px;font-weight:700;color:#94A3B8;letter-spacing:.5px;text-transform:uppercase'>
+      <span>Nombre</span><span>Usuario / Pass</span><span>Rol</span><span>Estado</span><span></span><span></span>
+    </div>""", unsafe_allow_html=True)
+
+    for uk, ud in usuarios.items():
+        activo = ud.get("activo", True)
+        rol_colors = {"gerente":"#7C3AED","comercial":"#2563EB","socio":"#0D9488"}
+        rol_color  = rol_colors.get(ud["rol"],"#94A3B8")
+        cols = st.columns([2, 1.5, 1, 1, 0.7, 0.7])
+        cols[0].markdown(f"**{ud['nombre']}**")
+        cols[1].markdown(
+            f"<code style='font-size:11px'>{uk}</code><br>"
+            f"<span style='font-size:10px;color:#94A3B8'>🔑 {ud['pass']}</span>",
+            unsafe_allow_html=True)
+        cols[2].markdown(
+            f"<span style='background:{rol_color}22;color:{rol_color};border:1px solid {rol_color}44;"
+            f"border-radius:20px;padding:2px 8px;font-size:10.5px;font-weight:600'>{ud['rol'].capitalize()}</span>",
+            unsafe_allow_html=True)
+        cols[3].markdown(
+            f'<span class="tag {"tag-g" if activo else "tag-r"}">{"Activo" if activo else "Inactivo"}</span>',
+            unsafe_allow_html=True)
+        if cols[4].button("✏️ Editar", key=f"edit_{uk}", use_container_width=True):
+            st.session_state["eu"] = uk
+            st.rerun()
+        if cols[5].button("🔒" if activo else "🔓", key=f"tog_{uk}", use_container_width=True):
+            st.session_state.usuarios_db[uk]["activo"] = not activo
+            st.rerun()
+        st.markdown('<hr style="border:none;border-top:1px solid #F1F5F9;margin:3px 0">',
+                    unsafe_allow_html=True)
+
+    # ── Formulario de edición
+    eu = st.session_state.get("eu", "")
     if eu and eu in usuarios:
-        ud_e=usuarios[eu]
-        with st.form("euf"):
-            st.markdown(f"**Editando: {ud_e['nombre']}**")
-            c1,c2=st.columns(2)
-            with c1: nn=st.text_input("Nombre",value=ud_e["nombre"]); np=st.text_input("Nueva contraseña",type="password")
+        ud_e = usuarios[eu]
+        st.markdown("---")
+        st.markdown(f"#### ✏️ Editando: **{ud_e['nombre']}**")
+        with st.form("euf", clear_on_submit=False):
+            c1, c2 = st.columns(2)
+            with c1:
+                nn = st.text_input("Nombre completo", value=ud_e["nombre"])
+                np = st.text_input("Nueva contraseña (vacío = sin cambio)",
+                                   type="password", placeholder="••••••••")
             with c2:
-                nr=st.selectbox("Rol",["gerente","comercial"],index=0 if ud_e["rol"]=="gerente" else 1)
-                nc=st.selectbox("Comercial",COMS,index=COMS.index(ud_e["comercial"]) if ud_e["comercial"] in COMS else 0)
-            if st.form_submit_button("💾 Guardar",use_container_width=True):
-                st.session_state.usuarios_db[eu].update({"nombre":nn,"rol":nr,"comercial":nc})
-                if np: st.session_state.usuarios_db[eu]["pass"]=np
-                st.success("✅ Actualizado"); st.session_state.pop("eu",None); st.rerun()
+                ROLES = ["gerente","comercial","socio"]
+                idx_r = ROLES.index(ud_e["rol"]) if ud_e["rol"] in ROLES else 1
+                nr = st.selectbox("Rol", ROLES, index=idx_r,
+                    format_func=lambda x: {
+                        "gerente":"🟣 Gerente — acceso total",
+                        "comercial":"🔵 Comercial — sus proyectos",
+                        "socio":"🟢 Socio — solo visualización"
+                    }.get(x, x))
+                COMS_EXT = [""] + COMS
+                idx_c = COMS_EXT.index(ud_e.get("comercial","")) if ud_e.get("comercial","") in COMS_EXT else 0
+                nc = st.selectbox("Comercial asociado", COMS_EXT, index=idx_c,
+                    format_func=lambda x: "— Sin asignar —" if x=="" else x)
+            ca, cb = st.columns(2)
+            with ca:
+                guardar = st.form_submit_button("💾 Guardar cambios", use_container_width=True)
+            with cb:
+                cancelar = st.form_submit_button("✕ Cancelar", use_container_width=True)
+            if guardar:
+                st.session_state.usuarios_db[eu].update({
+                    "nombre": nn, "rol": nr, "comercial": nc
+                })
+                if np.strip():
+                    st.session_state.usuarios_db[eu]["pass"] = np.strip()
+                st.success(f"✅ **{nn}** actualizado")
+                st.session_state.pop("eu", None)
+                st.rerun()
+            if cancelar:
+                st.session_state.pop("eu", None)
+                st.rerun()
+
+    # ── Crear nuevo usuario
     st.markdown("---")
-    with st.form("auf"):
-        st.markdown("**➕ Nuevo usuario**")
-        c1,c2=st.columns(2)
-        with c1: nu=st.text_input("Usuario *"); nn2=st.text_input("Nombre *"); np2=st.text_input("Contraseña *",type="password")
-        with c2: nr2=st.selectbox("Rol",["comercial","gerente"]); nc2=st.selectbox("Comercial",COMS)
-        if st.form_submit_button("➕ Crear",use_container_width=True):
-            if not nu or not nn2 or not np2: st.error("Todos los campos obligatorios")
-            elif nu.lower() in usuarios: st.error(f"'{nu}' ya existe")
-            else:
-                st.session_state.usuarios_db[nu.lower()]={"pass":np2,"nombre":nn2,"rol":nr2,"comercial":nc2,"activo":True}
-                st.success(f"✅ {nu} creado"); st.rerun()
+    with st.expander("➕ Crear nuevo usuario"):
+        with st.form("auf"):
+            c1, c2 = st.columns(2)
+            with c1:
+                nu   = st.text_input("Nombre de usuario *", placeholder="ej: jperez")
+                nn2  = st.text_input("Nombre completo *")
+                np2  = st.text_input("Contraseña *", type="password")
+            with c2:
+                nr2  = st.selectbox("Rol", ["comercial","gerente","socio"])
+                nc2  = st.selectbox("Comercial", [""]+COMS,
+                    format_func=lambda x: "— Sin asignar —" if x=="" else x)
+            if st.form_submit_button("➕ Crear usuario", use_container_width=True):
+                if not nu or not nn2 or not np2:
+                    st.error("Nombre de usuario, nombre completo y contraseña son obligatorios")
+                elif nu.lower() in usuarios:
+                    st.error(f"El usuario '{nu}' ya existe")
+                else:
+                    st.session_state.usuarios_db[nu.lower()] = {
+                        "pass":np2,"nombre":nn2,"rol":nr2,"comercial":nc2,"activo":True
+                    }
+                    st.success(f"✅ Usuario **{nu}** creado con contraseña **{np2}**")
+                    st.rerun()
 
-
-# ══════════════════════════════════════════
-# MAPA DE BOGOTÁ — PROYECTOS
-# ══════════════════════════════════════════
-
-# Coordenadas conocidas de los proyectos (obtenidas de PDFs Drive + geocodificación)
-COORDS_CONOCIDAS = {
-    # Desde PDFs de ofertas
-    "EDIFICIO URAPANES":         {"lat": 4.6546, "lng": -74.0604, "dir": "Calle 63 No 20-40"},
-    "EDIFICIO ARCADIA":          {"lat": 4.6783, "lng": -74.0487, "dir": "Calle 94 No 23-17"},
-    "EDIFICIO RISARALDA":        {"lat": 4.6921, "lng": -74.0557, "dir": "Carrera 12 #91-15"},
-    "EDIFICIO BEN HUR":          {"lat": 4.5812, "lng": -74.1512, "dir": "Calle 49 Sur #78-62"},
-    "ESTUDIO 84":                {"lat": 4.6774, "lng": -74.0468, "dir": "Transversal 3 #84a-35"},
-    "COUNTRY 136":               {"lat": 4.7285, "lng": -74.0437, "dir": "Av. 15 #135-41"},
-    # Geocodificación por barrio/sector conocido
-    "EDIFICIO CASTILLA":         {"lat": 4.6762, "lng": -74.0541, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO SAHARA":           {"lat": 4.6651, "lng": -74.0582, "dir": "Teusaquillo, Bogotá"},
-    "PARK 104":                  {"lat": 4.6915, "lng": -74.0498, "dir": "Cra 15 #104, Bogotá"},
-    "EDIFICIO FERROL":           {"lat": 4.6589, "lng": -74.0621, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO LOS PINOS":        {"lat": 4.6702, "lng": -74.0533, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO AVANTI":           {"lat": 4.6558, "lng": -74.0599, "dir": "Teusaquillo, Bogotá"},
-    "EDIFICIO EL CERRO":         {"lat": 4.6481, "lng": -74.0641, "dir": "Bogotá"},
-    "EDIFICIO ALTOS DEL RETIRO": {"lat": 4.6635, "lng": -74.0527, "dir": "El Retiro, Bogotá"},
-    "EDIFICIO CAMILA":           {"lat": 4.6728, "lng": -74.0501, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO NOMAD":            {"lat": 4.6741, "lng": -74.0512, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO CESANNE":          {"lat": 4.6955, "lng": -74.0503, "dir": "Usaquén, Bogotá"},
-    "TORRE DEL PARQUE":          {"lat": 4.6998, "lng": -74.0489, "dir": "Usaquén, Bogotá"},
-    "EDIFICIO BARCELONA":        {"lat": 4.6641, "lng": -74.0569, "dir": "Bogotá"},
-    "EDIFICIO PLAZA 47":         {"lat": 4.6631, "lng": -74.0579, "dir": "Bogotá"},
-    "EDIFICIO HUNZA":            {"lat": 4.6679, "lng": -74.0551, "dir": "Bogotá"},
-    "EDIFICIO RITACUBA":         {"lat": 4.6698, "lng": -74.0541, "dir": "Bogotá"},
-    "EL PINO":                   {"lat": 4.6611, "lng": -74.0594, "dir": "Bogotá"},
-    "TERRACINO 93":              {"lat": 4.6812, "lng": -74.0477, "dir": "Bogotá"},
-    "OPORTO CHICO":              {"lat": 4.6799, "lng": -74.0488, "dir": "Bogotá"},
-    "EDIFICIO FONTIBON":         {"lat": 4.6544, "lng": -74.1431, "dir": "Fontibón, Bogotá"},
-    "EDIFICIO LABRADOR":         {"lat": 4.6621, "lng": -74.0571, "dir": "Bogotá"},
-    "EL FONTANAR":               {"lat": 4.6633, "lng": -74.0563, "dir": "Bogotá"},
-    "TIARA":                     {"lat": 4.6722, "lng": -74.0519, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO LA CANDELARIA":    {"lat": 4.5981, "lng": -74.0762, "dir": "La Candelaria, Bogotá"},
-    "EDIFICIO REYES III Y IV":   {"lat": 4.6744, "lng": -74.0508, "dir": "Bogotá"},
-    "EDIFICIO TORRE CARRARA":    {"lat": 4.6721, "lng": -74.0522, "dir": "Bogotá"},
-    "ARGOS":                     {"lat": 4.6631, "lng": -74.0578, "dir": "Bogotá"},
-    "EDIFICIO SAMORE":           {"lat": 4.6618, "lng": -74.0589, "dir": "Bogotá"},
-    "SUITES GOLD":               {"lat": 4.6801, "lng": -74.0481, "dir": "Bogotá"},
-    "MÁLAGA":                    {"lat": 4.6715, "lng": -74.0528, "dir": "Chapinero, Bogotá"},
-    "TORRE 94":                  {"lat": 4.6841, "lng": -74.0462, "dir": "Cra 15 #94, Bogotá"},
-    "EDIFICIO TULIPANES":        {"lat": 4.6759, "lng": -74.0499, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO ALTO ARAGÓN":      {"lat": 4.6788, "lng": -74.0491, "dir": "Bogotá"},
-    "EDIFICIO NEPTUNO":          {"lat": 4.6658, "lng": -74.0561, "dir": "Bogotá"},
-    "EDIFICIO LOS ANDES":        {"lat": 4.6621, "lng": -74.0577, "dir": "Bogotá"},
-    "PARK 104":                  {"lat": 4.6918, "lng": -74.0493, "dir": "Calle 104, Bogotá"},
-    "EDIFICIO ANCHICAYA":        {"lat": 4.6698, "lng": -74.0541, "dir": "Bogotá"},
-    "EDIFICIO SANTA ISABEL":     {"lat": 4.6141, "lng": -74.1012, "dir": "Bosa, Bogotá"},
-    "EDIFICIO ARBOLEDA PARK":    {"lat": 4.6551, "lng": -74.1421, "dir": "Fontibón, Bogotá"},
-    "EDIFICIO CYAN 26":          {"lat": 4.6302, "lng": -74.0831, "dir": "Kennedy, Bogotá"},
-    "BULEVAR":                   {"lat": 4.6921, "lng": -74.0501, "dir": "Usaquén, Bogotá"},
-    "EDIFICIO ARAUCARIA":        {"lat": 4.6761, "lng": -74.0501, "dir": "Chapinero, Bogotá"},
-    "EDIFICIO CALLE 67":         {"lat": 4.6631, "lng": -74.0580, "dir": "Calle 67, Bogotá"},
-    "OLIVAR":                    {"lat": 4.6641, "lng": -74.0572, "dir": "Bogotá"},
-    "ELITE":                     {"lat": 4.6651, "lng": -74.0563, "dir": "Bogotá"},
-    "EDIFICIO CAPIRO":           {"lat": 4.6551, "lng": -74.0651, "dir": "Bogotá"},
-    "EDIFICIO LUMINA":           {"lat": 4.6561, "lng": -74.0641, "dir": "Bogotá"},
-    "SANTA VIVIANA":             {"lat": 4.6451, "lng": -74.0741, "dir": "Bogotá"},
-    "EDIFICIO CALLE 58":         {"lat": 4.6419, "lng": -74.0781, "dir": "Calle 58, Bogotá"},
-    "EDIFICIO GUAYACAN":         {"lat": 4.6501, "lng": -74.0701, "dir": "Bogotá"},
-    "EDIFICIO CALIFORNIA ANTIGUA":{"lat": 4.6481, "lng": -74.0721, "dir": "Bogotá"},
-    "EDIFICIO TRÍPOLI":          {"lat": 4.6471, "lng": -74.0731, "dir": "Bogotá"},
-    "EDIFICIO YAKARTA":          {"lat": 4.6461, "lng": -74.0741, "dir": "Bogotá"},
-    "EDIFICIO TORRE CHALETS":    {"lat": 4.6441, "lng": -74.0761, "dir": "Bogotá"},
-    # Alto 61 (referencia instalación)
-    "ALTO 61 (Referencia)":      {"lat": 4.6553, "lng": -74.0621, "dir": "Calle 61 #3B-08, Bogotá"},
-}
-
-
-def pg_mapa():
-    hdr("🗺️","Mapa de Proyectos","Ubicación de los edificios en Bogotá")
-    df = mis_proyectos()
-
-    # Filtros
-    c1,c2,c3 = st.columns(3)
-    with c1:
-        filtro_estado = st.selectbox("Filtrar por estado", ["Todos"]+ESTADOS_LISTA,
-            format_func=lambda x: ETAPAS.get(x,{"label":x})["label"] if x!="Todos" else "Todos")
-    with c2:
-        if st.session_state.user["rol"]=="gerente":
-            filtro_com = st.selectbox("Comercial",["Todos"]+sorted(df["comercial"].dropna().unique().tolist()))
-        else:
-            filtro_com = "Todos"
-    with c3:
-        mostrar_perdidos = st.checkbox("Mostrar rechazados", value=False)
-
-    # Aplicar filtros
-    df_m = df.copy()
-    if filtro_estado != "Todos": df_m = df_m[df_m["estado"]==filtro_estado]
-    if filtro_com != "Todos": df_m = df_m[df_m["comercial"]==filtro_com]
-    if not mostrar_perdidos: df_m = df_m[df_m["estado"]!="perdido"]
-
-    # Colores por estado
-    COLOR_ESTADO = {
-        "lead":"#3B82F6","cotizado":"#F59E0B","evaluacion_consejo":"#D97706",
-        "negociacion":"#F97316","aprobado_espera":"#0EA5E9","perdido":"#EF4444",
-        "creacion_contrato":"#10B981","financiacion":"#10B981","obra":"#059669",
-        "novedades_obra":"#D97706","entrega":"#059669","mantenimiento":"#6366F1","cerrado":"#059669"
-    }
-    ICON_ESTADO = {
-        "lead":"🔵","cotizado":"🟡","evaluacion_consejo":"🟠","negociacion":"🔥",
-        "aprobado_espera":"🔒","perdido":"❌","creacion_contrato":"📝",
-        "financiacion":"💰","obra":"🔨","cerrado":"✅"
-    }
-
-    # Construir marcadores
-    marcadores = []
-    sin_dir = []
-    for _, r in df_m.iterrows():
-        nombre = str(r["nombre"]).strip().upper()
-        # Buscar en coords conocidas
-        coords = COORDS_CONOCIDAS.get(nombre)
-        # Buscar coincidencia parcial si no hay exacta
-        if not coords:
-            for k,v in COORDS_CONOCIDAS.items():
-                if k in nombre or nombre in k:
-                    coords = v
-                    break
-        # Si tiene dirección en el Sheet
-        dir_sheet = str(r.get("direccion","") or "").strip()
-        if dir_sheet and dir_sheet.lower() not in ["nan",""]:
-            dir_display = dir_sheet
-        elif coords:
-            dir_display = coords.get("dir","Bogotá")
-        else:
-            dir_display = "Dirección no registrada"
-            sin_dir.append(nombre)
-
-        if coords:
-            est = str(r.get("estado","lead"))
-            tn = int(r.get("totalNum",0) or 0)
-            nota = str(r.get("lastNote","") or r.get("notas","") or "")[:80]
-            com = str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"
-            color = COLOR_ESTADO.get(est,"#94A3B8")
-            icon = ICON_ESTADO.get(est,"📍")
-            marcadores.append({
-                "lat": coords["lat"], "lng": coords["lng"],
-                "nombre": nombre, "estado": est,
-                "color": color, "icon": icon,
-                "dir": dir_display, "valor": tn,
-                "comercial": com, "nota": nota,
-                "label": ETAPAS.get(est,{"label":est})["label"]
-            })
-
-    total_mapa = len(marcadores)
-    st.markdown(f'<div style="font-size:12px;color:#94A3B8;margin-bottom:12px">{total_mapa} proyectos en el mapa · {len(sin_dir)} sin ubicación registrada</div>',unsafe_allow_html=True)
-
-    if not marcadores:
-        st.info("No hay proyectos con coordenadas para los filtros seleccionados.")
-        return
-
-    # Generar HTML del mapa con Leaflet (OpenStreetMap — gratis, sin API key)
-    markers_js = ""
-    for m in marcadores:
-        popup = (f"<div style='font-family:Inter,sans-serif;min-width:180px'>"
-                 f"<div style='font-weight:700;font-size:13px;color:#0F172A;margin-bottom:4px'>{m['icon']} {m['nombre']}</div>"
-                 f"<div style='font-size:11px;color:#2563EB;margin-bottom:3px'>{m['label']}</div>"
-                 f"<div style='font-size:11px;color:#64748B;margin-bottom:2px'>📍 {m['dir']}</div>"
-                 f"<div style='font-size:11px;color:#64748B;margin-bottom:2px'>👤 {m['comercial']}</div>"
-                 f"{'<div style=&quot;font-size:11px;color:#64748B;margin-bottom:2px&quot;>💰 '+cop(m['valor'])+'</div>' if m['valor'] else ''}"
-                 f"{'<div style=&quot;font-size:10.5px;color:#94A3B8;margin-top:4px&quot;>'+m['nota']+'</div>' if m['nota'] else ''}"
-                 f"</div>")
-        markers_js += f"""
-        L.circleMarker([{m['lat']}, {m['lng']}], {{
-            radius: 9,
-            fillColor: '{m['color']}',
-            color: 'white',
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.9
-        }}).bindPopup(`{popup}`).addTo(map);
-        """
-
-    # Referencia Alto 61
-    alto61 = COORDS_CONOCIDAS["ALTO 61 (Referencia)"]
-    markers_js += f"""
-    L.marker([{alto61['lat']}, {alto61['lng']}], {{
-        icon: L.divIcon({{
-            html: '<div style="background:#0D9488;color:white;font-size:9px;font-weight:700;padding:3px 6px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">⭐ ALTO 61</div>',
-            iconAnchor: [30, 10]
-        }})
-    }}).addTo(map);
-    """
-
-    mapa_html = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<style>
-  body{{margin:0;padding:0;font-family:Inter,sans-serif}}
-  #map{{height:560px;width:100%;border-radius:12px}}
-  .leaflet-popup-content-wrapper{{border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15)}}
-  .leaflet-popup-content{{margin:10px 14px}}
-  /* Leyenda */
-  .leyenda{{background:white;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:1.9}}
-  .leyenda h4{{margin:0 0 6px;font-size:11.5px;font-weight:700;color:#0F172A}}
-  .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}}
-</style>
-</head>
-<body>
-<div id="map"></div>
-<script>
-  var map = L.map('map').setView([4.6722, -74.0538], 12);
-  L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 18
-  }}).addTo(map);
-
-  {markers_js}
-
-  // Leyenda
-  var legend = L.control({{position: 'bottomright'}});
-  legend.onAdd = function(map) {{
-    var div = L.DomUtil.create('div', 'leyenda');
-    div.innerHTML = '<h4>Estado del proyecto</h4>' +
-      '<span class="dot" style="background:#D97706"></span>En evaluación/Consejo<br>' +
-      '<span class="dot" style="background:#F59E0B"></span>Contacto frío<br>' +
-      '<span class="dot" style="background:#F97316"></span>Negociando<br>' +
-      '<span class="dot" style="background:#0EA5E9"></span>Stand-by Vigilancia<br>' +
-      '<span class="dot" style="background:#EF4444"></span>Perdido<br>' +
-      '<span class="dot" style="background:#059669"></span>Cerrado/Obra';
-    return div;
-  }};
-  legend.addTo(map);
-</script>
-</body>
-</html>"""
-
-    st.components.v1.html(mapa_html, height=580, scrolling=False)
-
-    # Sin dirección
-    if sin_dir:
-        with st.expander(f"⚠️ {len(sin_dir)} proyectos sin ubicación registrada"):
-            st.markdown("Agrega la dirección en **Nueva Cotización** o directamente en el Google Sheet.")
-            for n in sin_dir:
-                st.markdown(f"- {n}")
-
-    # Tip
-    st.markdown(f'<div class="al blue" style="margin-top:10px"><div>💡</div><div>Haz <strong>clic en cualquier punto</strong> del mapa para ver el detalle. Para agregar direcciones que faltan, edítalas en el Sheet o en <strong>Nueva Cotización</strong>.</div></div>',unsafe_allow_html=True)
-
-
-# ══════════════════════════════════════════
-# MAIN
-# ══════════════════════════════════════════
 if not st.session_state.logged_in:
     pg_login()
 else:
