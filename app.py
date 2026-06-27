@@ -22,7 +22,14 @@ import streamlit.components.v1
 VERSION    = "v8 · Jun 2026"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 SHEET_ID   = "1GyvYB7__4XKZicXAUU-nSHIFRVCJNs8oMgNWVpYEaTE"
-SHEET_URL  = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
+# Intentar múltiples URLs — la hoja puede tener diferente gid después de reimportar
+SHEET_URLS = [
+    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0",
+    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv&sheet=Sheet1",
+    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq?tqx=out:csv",
+    f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv",
+]
+SHEET_URL  = SHEET_URLS[0]
 
 ETAPAS = {
     "lead":              {"label":"Lead nuevo",              "color":"#DBEAFE","dot":"#3B82F6","grupo":"Comercial"},
@@ -252,12 +259,19 @@ def cop(n):
 
 @st.cache_data(ttl=300)
 def cargar_desde_sheet():
-    """Carga datos del Sheet. Tolerante a columnas en cualquier orden."""
+    """Carga datos del Sheet. Prueba múltiples URLs por si cambió el gid."""
+    raw = None
+    for url in SHEET_URLS:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent":"Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                r = resp.read().decode("utf-8", errors="replace")
+                if len(r) > 100 and ("nombre" in r.lower() or "edificio" in r.lower()):
+                    raw = r; break
+        except: continue
+    if not raw:
+        return None, "⚠️ Sin conexión al Sheet. Revisa permisos (debe ser público).", False
     try:
-        req = urllib.request.Request(SHEET_URL, headers={"User-Agent":"Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-
         # Saltar líneas que no son el header (ej: "# nombre_hoja")
         lineas = raw.split("\n")
         header_idx = 0
@@ -323,10 +337,11 @@ def cargar_desde_sheet():
         if len(rows) < 10:
             return None, f"⚠️ Sheet con datos insuficientes ({len(rows)} filas). Usando datos locales.", False
 
-        return pd.DataFrame(rows), f"✅ Sheet — {len(rows)} proyectos · {datetime.now().strftime('%H:%M:%S')}", True
+        msg = f"✅ Sheet — {len(rows)} proyectos · {datetime.now().strftime('%H:%M:%S')}"
+        return pd.DataFrame(rows), msg, True
 
     except Exception as ex:
-        return None, f"⚠️ Sin conexión al Sheet ({str(ex)[:60]}). Usando datos locales.", False
+        return None, f"⚠️ Error procesando Sheet ({str(ex)[:60]}). Usando datos locales.", False
 
 @st.cache_data
 def cargar_json_base():
