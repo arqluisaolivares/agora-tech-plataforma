@@ -250,49 +250,83 @@ def cop(n):
         return "$"+f"{n:,}".replace(",",".")
     except: return "$0"
 
-@st.cache_data(ttl=300)  # Cache 5 minutos — se actualiza automáticamente
+@st.cache_data(ttl=300)
 def cargar_desde_sheet():
-    """Carga los datos del Google Sheet (CSV público). TTL=5min para auto-actualización."""
+    """Carga datos del Sheet. Tolerante a columnas en cualquier orden."""
     try:
         req = urllib.request.Request(SHEET_URL, headers={"User-Agent":"Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
-        df_raw = pd.read_csv(io.StringIO(raw), dtype=str, on_bad_lines="skip")
-        df_raw.columns = [c.strip() for c in df_raw.columns]
+
+        # Saltar líneas que no son el header (ej: "# nombre_hoja")
+        lineas = raw.split("\n")
+        header_idx = 0
+        for i, l in enumerate(lineas):
+            if "nombre" in l.lower() and "comercial" in l.lower():
+                header_idx = i
+                break
+        csv_limpio = "\n".join(lineas[header_idx:])
+
+        df_raw = pd.read_csv(io.StringIO(csv_limpio), dtype=str, on_bad_lines="skip")
+        df_raw.columns = [c.strip().lower().replace(" ","_") for c in df_raw.columns]
+
         rows = []
         for _, r in df_raw.iterrows():
-            nombre = str(r.get("nombre","")).strip()
-            if not nombre or nombre=="nan": continue
-            estado_raw = str(r.get("estado","")).strip().lower()
-            etapa_orig = str(r.get("etapaOrig","")).strip()
-            estado = normalizar(estado_raw, etapa_orig)
-            tn = limpiar_num(r.get("totalNum") or r.get("total_num") or r.get("valorTotal") or 0)
-            c24 = limpiar_num(r.get("c24Num") or r.get("cuota24Num") or 0) or (tn//24 if tn else 0)
-            c36 = limpiar_num(r.get("c36Num") or r.get("cuota36Num") or 0) or (tn//36 if tn else 0)
+            def g(keys, default=""):
+                for k in (keys if isinstance(keys,list) else [keys]):
+                    v = r.get(k.lower(),"")
+                    if v and str(v).strip() not in ["nan","None",""]: return str(v).strip()
+                return default
+
+            nombre = g("nombre")
+            if not nombre: continue
+
+            estado_raw = g("estado").lower()
+            etapa_orig = g("etapaorig")
+            estado     = normalizar(estado_raw, etapa_orig)
+
+            # totalNum: buscar en múltiples columnas posibles
+            tn = 0
+            for col in ["totalnum","total_num","valortotal","valor_total"]:
+                v = limpiar_num(r.get(col,0))
+                if v > 0: tn = v; break
+            # Si totalNum=0 pero total tiene "$141.547.806", extraer el número
+            if tn == 0:
+                total_str = g(["total","valor"])
+                tn = limpiar_num(total_str)
+
+            c24 = limpiar_num(g(["c24num","cuota24num","c24_num"])) or (tn//24 if tn else 0)
+            c36 = limpiar_num(g(["c36num","cuota36num","c36_num"])) or (tn//36 if tn else 0)
+
             rows.append({
-                "id":          str(r.get("id","")).strip(),
-                "nombre":      nombre,
-                "comercial":   str(r.get("comercial","")).strip(),
-                "contacto":    str(r.get("contacto","")).strip(),
-                "email":       str(r.get("email","")).strip(),
-                "totalNum":    tn, "c24Num": c24, "c36Num": c36,
-                "total":       cop(tn), "cuota24": cop(c24), "cuota36": cop(c36),
-                "vig":         str(r.get("vig","")).strip(),
-                "vigH":        str(r.get("vigH","")).strip(),
-                "estado":      estado,
-                "etapaOrig":   etapa_orig,
-                "notas":       str(r.get("notas","")).strip(),
-                "lastNote":    str(r.get("lastNote","")).strip(),
-                "lastUpdate":  str(r.get("lastUpdate","")).strip()[:10],
-                "fecha":       str(r.get("fecha","")).strip()[:10],
-                "drive":       str(r.get("drive","")).strip(),
-                "historial":   str(r.get("historial","[]")).strip(),
-                "encuesta":    str(r.get("encuesta","{}")).strip(),
-                "novedad":     str(r.get("novedad","")).strip(),
+                "id":        g("id"),
+                "nombre":    nombre,
+                "comercial": g("comercial"),
+                "contacto":  g(["contacto","contacto_nombre"]),
+                "celular":   g(["celular","telefono","cel"]),
+                "email":     g("email"),
+                "direccion": g("direccion"),
+                "totalNum":  tn, "c24Num": c24, "c36Num": c36,
+                "total":     cop(tn), "cuota24": cop(c24), "cuota36": cop(c36),
+                "vig":       g("vig"), "vigH": g("vigh"),
+                "estado":    estado, "etapaOrig": etapa_orig,
+                "notas":     g("notas"),
+                "lastNote":  g("lastnote"),
+                "lastUpdate":g("lastupdate")[:10] if g("lastupdate") else "",
+                "fecha":     g("fecha")[:10] if g("fecha") else "",
+                "drive":     g("drive"),
+                "historial": g("historial") or "[]",
+                "encuesta":  g("encuesta") or "{}",
+                "novedad":   g("novedad"),
             })
-        return pd.DataFrame(rows), f"✅ Sheet sincronizado — {len(rows)} proyectos · {datetime.now().strftime('%H:%M:%S')}", True
+
+        if len(rows) < 10:
+            return None, f"⚠️ Sheet con datos insuficientes ({len(rows)} filas). Usando datos locales.", False
+
+        return pd.DataFrame(rows), f"✅ Sheet — {len(rows)} proyectos · {datetime.now().strftime('%H:%M:%S')}", True
+
     except Exception as ex:
-        return None, f"⚠️ No se pudo conectar al Sheet: {ex}", False
+        return None, f"⚠️ Sin conexión al Sheet ({str(ex)[:60]}). Usando datos locales.", False
 
 @st.cache_data
 def cargar_json_base():
