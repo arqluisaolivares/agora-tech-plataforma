@@ -15,6 +15,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import urllib.request, io
 import streamlit.components.v1
+import gspread
+from google.oauth2.service_account import Credentials
 
 # ══════════════════════════════════════════
 # CONFIGURACIÓN
@@ -30,6 +32,81 @@ SHEET_URLS = [
     f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv",
 ]
 SHEET_URL  = SHEET_URLS[0]
+
+# ══════════════════════════════════════════
+# CONEXIÓN DE ESCRITURA — Google Sheets API (gspread)
+# Usa la Service Account configurada en Streamlit Secrets
+# ══════════════════════════════════════════
+@st.cache_resource
+def get_gspread_client():
+    """Crea el cliente autenticado de gspread una sola vez por sesión del servidor."""
+    try:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        client = gspread.authorize(creds)
+        return client
+    except Exception as ex:
+        return None
+
+def get_worksheet():
+    """Devuelve la hoja de trabajo (worksheet) del Sheet, o None si falla."""
+    client = get_gspread_client()
+    if not client:
+        return None
+    try:
+        sh = client.open_by_key(SHEET_ID)
+        # Tomar la primera hoja, sin importar cómo se llame
+        ws = sh.get_worksheet(0)
+        return ws
+    except Exception as ex:
+        return None
+
+def escribir_fila_sheet(nombre, campos):
+    """
+    Busca la fila del proyecto por nombre en el Sheet real y actualiza
+    las columnas indicadas en `campos` (dict columna->valor).
+    Devuelve True si escribió correctamente, False si falló (silencioso).
+    """
+    ws = get_worksheet()
+    if not ws:
+        return False
+    try:
+        headers = ws.row_values(1)
+        headers_lower = [h.strip().lower() for h in headers]
+        if "nombre" not in headers_lower:
+            return False
+        col_nombre_idx = headers_lower.index("nombre") + 1  # gspread es 1-indexed
+
+        # Buscar la fila exacta por nombre (case-insensitive)
+        col_nombres = ws.col_values(col_nombre_idx)
+        fila_idx = None
+        for i, val in enumerate(col_nombres):
+            if val.strip().upper() == nombre.strip().upper():
+                fila_idx = i + 1  # 1-indexed
+                break
+        if fila_idx is None:
+            return False
+
+        # Construir el batch update: una celda por campo
+        updates = []
+        for campo, valor in campos.items():
+            campo_l = campo.strip().lower()
+            if campo_l in headers_lower:
+                col_idx = headers_lower.index(campo_l) + 1
+                updates.append({
+                    "range": gspread.utils.rowcol_to_a1(fila_idx, col_idx),
+                    "values": [[str(valor)]],
+                })
+        if updates:
+            ws.batch_update(updates)
+        return True
+    except Exception as ex:
+        return False
+
 
 ETAPAS = {
     "lead":              {"label":"Lead nuevo",              "color":"#DBEAFE","dot":"#3B82F6","grupo":"Comercial"},
@@ -400,6 +477,9 @@ def update_proy(nombre, campos):
     if mask.any():
         for k,v in campos.items(): df.loc[mask,k]=v
         st.session_state.crm=df
+    # Escribir también al Google Sheet real (persistencia verdadera)
+    ok = escribir_fila_sheet(nombre, campos)
+    st.session_state["ultimo_guardado_sheet"] = ok
 
 def agregar_historial(nombre, estado, nota, usuario):
     df=get_crm(); mask=df["nombre"]==nombre
@@ -413,6 +493,16 @@ def agregar_historial(nombre, estado, nota, usuario):
     df.loc[mask,"estado"]=estado
     df.loc[mask,"novedad"]=f"{datetime.now().strftime('%d %b')} — {nota[:100]}"
     st.session_state.crm=df
+    # Escribir también al Google Sheet real (persistencia verdadera)
+    campos_sheet = {
+        "estado":     estado,
+        "notas":      nota,
+        "lastNote":   nota,
+        "lastUpdate": datetime.now().isoformat()[:10],
+        "historial":  json.dumps(hist, ensure_ascii=False),
+    }
+    ok = escribir_fila_sheet(nombre, campos_sheet)
+    st.session_state["ultimo_guardado_sheet"] = ok
 
 def add_proy(datos):
     df=get_crm()
@@ -1072,7 +1162,10 @@ def pg_actualizar():
                     ext = {k:v for k,v in {"contrato":contrato,"financiacion_info":financ,
                                             "obra_inicio":obra_ini,"obra_fin":obra_fin}.items() if v}
                     if ext: update_proy(sel, ext)
-                    st.success(f"✅ **{sel}** → {ETAPAS.get(nuevo_e,{'label':nuevo_e})['label']}")
+                    if st.session_state.get("ultimo_guardado_sheet"):
+                        st.success(f"✅ **{sel}** → {ETAPAS.get(nuevo_e,{'label':nuevo_e})['label']} — guardado en Google Sheet")
+                    else:
+                        st.warning(f"⚠️ **{sel}** actualizado localmente, pero no se pudo guardar en el Sheet. Avisa a soporte.")
                     st.session_state.editing = ""
                     st.rerun()
 
@@ -1081,7 +1174,8 @@ def pg_actualizar():
     # ════════════════════════════════
     with tab_info:
         st.markdown(
-            '<div class="al blue"><div>💡</div><div>Actualiza aquí la información base del proyecto. '            'Los cambios se guardan en el CRM local. Para que queden en el Sheet de Google, '            'agrega los datos directamente allí también.</div></div>',
+            '<div class="al blue"><div>💡</div><div>Actualiza aquí la información base del proyecto. '
+            'Los cambios se guardan directamente en el Google Sheet — quedan disponibles para todo el equipo al instante.</div></div>',
             unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1201,7 +1295,10 @@ def pg_actualizar():
                         f"Información actualizada — {', '.join(campos_cambiados)}",
                         u["nombre"])
 
-                st.success(f"✅ Información de **{nuevo_nombre or sel}** actualizada correctamente")
+                if st.session_state.get("ultimo_guardado_sheet"):
+                    st.success(f"✅ Información de **{nuevo_nombre or sel}** actualizada y guardada en Google Sheet")
+                else:
+                    st.warning(f"⚠️ Información de **{nuevo_nombre or sel}** actualizada localmente, pero no se pudo guardar en el Sheet. Avisa a soporte.")
                 st.rerun()
 
             if cancelar_info:
@@ -1713,10 +1810,21 @@ def pg_configuracion():
     else:
         st.markdown('<div class="al red"><div>🔴</div><div><strong>IA no configurada.</strong></div></div>',unsafe_allow_html=True)
 
-    # Estado del Sheet
+    # Estado del Sheet (lectura)
     sheet_ok=st.session_state.get("sheet_ok",False)
     status=st.session_state.get("sheet_status","No verificado")
-    st.markdown(f'<div class="al {"green" if sheet_ok else "amber"}"><div>{"✅" if sheet_ok else "⚠️"}</div><div><strong>Google Sheet:</strong> {status}</div></div>',unsafe_allow_html=True)
+    st.markdown(f'<div class="al {"green" if sheet_ok else "amber"}"><div>{"✅" if sheet_ok else "⚠️"}</div><div><strong>Google Sheet (lectura):</strong> {status}</div></div>',unsafe_allow_html=True)
+
+    # Estado de la escritura (gspread / Service Account)
+    gc_test = get_gspread_client()
+    if gc_test:
+        ws_test = get_worksheet()
+        if ws_test:
+            st.markdown('<div class="al green"><div>✅</div><div><strong>Google Sheet (escritura):</strong> Conectado vía Service Account — los cambios se guardan automáticamente.</div></div>',unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="al red"><div>🔴</div><div><strong>Google Sheet (escritura):</strong> Service Account conectada pero sin acceso a este Sheet. Comparte el Sheet con <code>agoracmr@agora-tech-personal.iam.gserviceaccount.com</code> como Editor.</div></div>',unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="al red"><div>🔴</div><div><strong>Google Sheet (escritura):</strong> No se encontraron credenciales <code>gcp_service_account</code> en Secrets.</div></div>',unsafe_allow_html=True)
 
     if st.button("🔄 Forzar sincronización con Sheet",use_container_width=True):
         refrescar_sheet(); st.rerun()
