@@ -693,7 +693,7 @@ def pg_dashboard():
                         st.markdown(f'<div class="ti"><div class="ti-dot" style="background:{dc}"></div><div class="ti-date">{ev.get("fecha","")} · {ev.get("usuario","")}</div><div class="ti-h">{ETAPAS.get(ev.get("estado",""),{"label":ev.get("estado","")})["label"]}</div><div class="ti-t">{ev.get("nota","")}</div></div>',unsafe_allow_html=True)
                     st.markdown('</div>',unsafe_allow_html=True)
                 b1,b2=st.columns(2)
-                if b1.button("📝 Actualizar",key=f"v_{r['nombre']}"):
+                if b1.button("📝 Actualizar",key=f"v_{r.name}_{r['nombre']}"):
                     st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.session_state.vista_estado=None; st.rerun()
         return
 
@@ -869,7 +869,7 @@ def pg_novedades():
                         dc=ETAPAS.get(ev.get("estado",""),{"dot":"#94A3B8"})["dot"]
                         st.markdown(f'<div class="ti"><div class="ti-dot" style="background:{dc}"></div><div class="ti-date">{ev.get("fecha","")} · {ev.get("usuario","")}</div><div class="ti-h">{ETAPAS.get(ev.get("estado",""),{"label":ev.get("estado","")})["label"]}</div><div class="ti-t">{ev.get("nota","")}</div></div>',unsafe_allow_html=True)
                     st.markdown('</div>',unsafe_allow_html=True)
-                if st.button("📝 Actualizar ahora",key=f"nu_{r['nombre']}"):
+                if st.button("📝 Actualizar ahora",key=f"nu_{r.name}_{r['nombre']}"):
                     st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.rerun()
 
     if len(df_sin)>0:
@@ -881,7 +881,7 @@ def pg_novedades():
             cols[0].markdown(f"**{r['nombre']}**  <span style='font-size:11px;color:#94A3B8'>{ETAPAS.get(str(r.get('estado','')),{'label':''})['label']}</span>",unsafe_allow_html=True)
             cols[1].markdown(f"<small style='color:#94A3B8'>{str(r.get('comercial','')).split()[0] if r.get('comercial') else '—'}</small>",unsafe_allow_html=True)
             cols[2].markdown(f"<small style='color:#94A3B8'>{str(r.get('lastUpdate','Nunca'))[:10]}</small>",unsafe_allow_html=True)
-            if cols[3].button("📝",key=f"ns_{r['nombre']}"):
+            if cols[3].button("📝",key=f"ns_{r.name}_{r['nombre']}"):
                 st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.rerun()
 
     st.markdown("---")
@@ -1060,9 +1060,9 @@ def pg_proyectos():
                 if nota and nota!="nan":
                     st.markdown(f'<div class="al blue"><div>📝</div><div>{nota[:300]}</div></div>',unsafe_allow_html=True)
                 b1,b2=st.columns(2)
-                if b1.button("📝 Actualizar",key=f"pu_{r['nombre']}"):
+                if b1.button("📝 Actualizar",key=f"pu_{r.name}_{r['nombre']}"):
                     st.session_state.editing=r["nombre"]; st.session_state.page="Actualizar Estado"; st.rerun()
-                if b2.button("✉️ Correo IA",key=f"pc_{r['nombre']}"):
+                if b2.button("✉️ Correo IA",key=f"pc_{r.name}_{r['nombre']}"):
                     st.session_state.page="Correos IA"; st.rerun()
             with th:
                 try: hist=json.loads(str(r.get("historial","[]") or "[]"))
