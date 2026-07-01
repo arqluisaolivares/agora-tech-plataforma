@@ -2090,7 +2090,7 @@ COORDS_CONOCIDAS = {
 
 
 def pg_mapa():
-    hdr("🗺️","Mapa de Proyectos","Ubicación real desde el Sheet — hover para ver el nombre")
+    hdr("🗺️","Mapa de Proyectos","Ubicación real — hover para ver nombre del edificio")
     df = mis_proyectos()
 
     # ── Filtros
@@ -2100,14 +2100,13 @@ def pg_mapa():
             format_func=lambda x: ETAPAS.get(x,{"label":x})["label"] if x!="Todos" else "Todos")
     with c2:
         if st.session_state.user["rol"] in ["gerente","socio"]:
-            opciones_com = ["Todos"] + sorted(df["comercial"].dropna().unique().tolist())
-            filtro_com = st.selectbox("Comercial", opciones_com)
+            filtro_com = st.selectbox("Comercial",
+                ["Todos"] + sorted(df["comercial"].dropna().unique().tolist()))
         else:
             filtro_com = "Todos"
     with c3:
         mostrar_perdidos = st.checkbox("Mostrar rechazados", value=False)
 
-    # ── Aplicar filtros
     df_m = df.copy()
     if filtro_estado != "Todos": df_m = df_m[df_m["estado"]==filtro_estado]
     if filtro_com    != "Todos": df_m = df_m[df_m["comercial"]==filtro_com]
@@ -2118,175 +2117,74 @@ def pg_mapa():
         "negociacion":"#EF4444","aprobado_espera":"#0EA5E9","perdido":"#94A3B8",
         "cerrado":"#059669",
     }
-    ICON_ESTADO = {
-        "lead":"🔵","cotizado":"🟡","evaluacion_consejo":"🟠",
-        "negociacion":"🔥","aprobado_espera":"🔒","perdido":"⚫","cerrado":"✅",
+
+    # Direcciones reales verificadas de los PDFs del Drive
+    # Estas se usan solo si el proyecto NO tiene dirección en el Sheet
+    DIRS_VERIFICADAS = {
+        "EDIFICIO URAPANES":          "Calle 63 No 20-40, Bogotá, Colombia",
+        "EDIFICIO ARCADIA":           "Calle 94 No 23-17, Bogotá, Colombia",
+        "EDIFICIO RISARALDA":         "Carrera 12 91-15, Bogotá, Colombia",
+        "EDIFICIO BEN HUR":           "Calle 49 Sur 78-62, Bogotá, Colombia",
+        "ESTUDIO 84":                 "Transversal 3 84a-35, Bogotá, Colombia",
+        "COUNTRY 136":                "Autopista Norte 135-41, Bogotá, Colombia",
+        "RINCON DE ALCAZAR":          "Calle 140 7C-13, Bogotá, Colombia",
+        "EDIFICIO IGUA":              "Carrera 108a 140a-61, Bogotá, Colombia",
+        "EDIFICIO SAN SEBASTIAN":     "Transversal 57 106-46, Bogotá, Colombia",
+        "TORRES DE PERALONSO II":     "Calle 108 B 54-30, Bogotá, Colombia",
+        "EDIFICIO CYAN 26":           "Carrera 25 24C-11, Bogotá, Colombia",
+        "EDIFICIO BIZANCIO":          "Calle 135C 9A-71, Bogotá, Colombia",
+        "PARK 104":                   "Transversal 57 104b-90, Bogotá, Colombia",
+        "EDIFICIO PARK 104":          "Transversal 57 104b-90, Bogotá, Colombia",
+        "EDIFICIO FONTIBON":          "Fontibón, Bogotá, Colombia",
+        "EDIFICIO LA CANDELARIA":     "La Candelaria, Bogotá, Colombia",
     }
 
-    # ── Coordenadas fijas de los que SÍ tienen dirección verificada
-    # Solo usamos estas cuando el Sheet no tiene dirección
-    COORDS_FIJAS = {
-        # ── Verificadas de PDFs del Drive y Sheet
-        "EDIFICIO URAPANES":          (4.6546, -74.0604, "Calle 63 No 20-40"),
-        "EDIFICIO ARCADIA":           (4.6783, -74.0487, "Calle 94 No 23-17"),
-        "EDIFICIO RISARALDA":         (4.6921, -74.0557, "Cra 12-91-15"),
-        "EDIFICIO BEN HUR":           (4.5812, -74.1512, "Calle 49 Sur #78-62"),
-        "ESTUDIO 84":                 (4.6774, -74.0468, "Transversal 3 #84a-35"),
-        "COUNTRY 136":                (4.7285, -74.0437, "Av. 15 #135-41"),
-        "RINCON DE ALCAZAR":          (4.7321, -74.0359, "Calle 140 No 7C-13"),
-        "EDIFICIO IGUA":              (4.7221, -74.1102, "Cra. 108a #140a-61"),
-        "EDIFICIO SAN SEBASTIAN":     (4.7012, -74.0631, "Tv 57 No 106-46"),
-        "TORRES DE PERALONSO II":     (4.7018, -74.0628, "Calle 108 B No 54-30"),
-        "EDIFICIO CYAN 26":           (4.6302, -74.0831, "Cra 25 No 24C-11"),
-        "EDIFICIO BIZANCIO":          (4.7198, -74.0501, "Calle 135C 9A-71"),
-        "PARK 104":                   (4.6915, -74.0498, "Transversal 57 No 104b-90"),
-        "EDIFICIO PARK 104":          (4.6915, -74.0498, "Transversal 57 No 104b-90"),
-        "EDIFICIO FONTIBON":          (4.6544, -74.1431, "Fontibón, Bogotá"),
-        "EDIFICIO LA CANDELARIA":     (4.5981, -74.0762, "La Candelaria, Bogotá"),
-        "EDIFICIO CAPIRO":            (4.6551, -74.0651, "Bogotá"),
-        "EDIFICIO LUMINA":            (4.6561, -74.0641, "Bogotá"),
-        # ── Alto 61 — edificio modelo Ágora Tech
-        "ALTO 61 (Referencia)":       (4.6560, -74.0618, "Calle 61 #3F-08, Bogotá"),
-    }
-
-    # ── Geocodificación simple por nombre de calle Bogotá
-    # Reglas: "Calle N" → lat aproximada según calle
-    import re
-    def geocodificar_bogota(direccion):
-        """Geocodificación aproximada para calles de Bogotá."""
-        if not direccion: return None
-        d = direccion.lower().strip()
-        # Extraer número de calle
-        m = re.search(r'calle\s+(\d+)', d)
-        if m:
-            calle = int(m.group(1))
-            # En Bogotá: Calle 1 ≈ lat 4.598, cada 10 calles ≈ 0.009 grados norte
-            lat = 4.598 + (calle - 1) * 0.00090
-            # Carrera: buscar número de carrera
-            mc = re.search(r'(?:no|#|carrera|cra)\.?\s*(\d+)', d)
-            lng = -74.075  # centro Bogotá
-            if mc:
-                cra = int(mc.group(1))
-                lng = -74.098 + (cra * 0.002)  # aprox
-            return (round(lat,4), round(lng,4))
-        m2 = re.search(r'(?:carrera|cra|kr)\.?\s*(\d+)', d)
-        if m2:
-            cra = int(m2.group(1))
-            lat = 4.672  # centro Bogotá
-            lng = -74.098 + (cra * 0.002)
-            return (round(lat,4), round(lng,4))
-        m3 = re.search(r'av(?:enida)?\.?\s*15\b', d)
-        if m3: return (4.7285, -74.0437)  # Autopista Norte / Av 15
-        return None
-
-    # ── Construir marcadores
-    marcadores   = []
-    sin_direccion = []
-
+    # Construir lista de edificios para pasar al JS
+    edificios_js = []
+    sin_dir = []
     for _, r in df_m.iterrows():
         nombre    = str(r["nombre"]).strip().upper()
         dir_sheet = str(r.get("direccion","") or "").strip()
         if dir_sheet.lower() in ["nan","","none"]: dir_sheet = ""
 
-        lat, lng, dir_display = None, None, ""
-
-        # 1. Coordenadas fijas verificadas (más precisas)
-        if nombre in COORDS_FIJAS:
-            lat, lng, d_fija = COORDS_FIJAS[nombre]
-            dir_display = dir_sheet or d_fija
-
-        # 2. Si tiene dirección en el Sheet, intentar geocodificar
-        elif dir_sheet:
-            geo = geocodificar_bogota(dir_sheet)
-            if geo:
-                lat, lng = geo
-                dir_display = dir_sheet
-            else:
-                dir_display = dir_sheet  # sin coords pero tiene dirección
-
-        # Sin ubicación
-        if lat is None:
-            sin_direccion.append({"nombre": nombre, "dir": dir_sheet})
+        # Dirección: Sheet > verificada del Drive
+        if dir_sheet:
+            dir_buscar = dir_sheet + ", Bogotá, Colombia" if "bogot" not in dir_sheet.lower() else dir_sheet
+        elif nombre in DIRS_VERIFICADAS:
+            dir_buscar = DIRS_VERIFICADAS[nombre]
+        else:
+            sin_dir.append(nombre)
             continue
 
         est   = str(r.get("estado","lead"))
         tn    = int(r.get("totalNum",0) or 0)
-        nota  = str(r.get("lastNote","") or r.get("notas","") or "")[:100]
+        nota  = str(r.get("lastNote","") or r.get("notas","") or "")[:120]
         com   = str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"
         color = COLOR_ESTADO.get(est,"#94A3B8")
-        icon  = ICON_ESTADO.get(est,"📍")
+        label = ETAPAS.get(est,{"label":est})["label"]
 
-        marcadores.append({
-            "lat": lat, "lng": lng,
-            "nombre": nombre, "estado": est,
-            "color": color, "icon": icon,
-            "dir": dir_display, "valor": tn,
-            "comercial": com, "nota": nota,
-            "label": ETAPAS.get(est,{"label":est})["label"],
-        })
+        # Escapar para JSON seguro
+        nombre_s = nombre.replace('"','').replace("'","")
+        nota_s   = nota.replace('"','').replace("'","").replace("\n"," ")
+        dir_s    = dir_buscar.replace('"','').replace("'","")
+        com_s    = com.replace('"','').replace("'","")
+        valor_s  = cop(tn) if tn else ""
+
+        edificios_js.append(
+            f'{{"nombre":"{nombre_s}","dir":"{dir_s}","color":"{color}",'
+            f'"label":"{label}","com":"{com_s}","valor":"{valor_s}","nota":"{nota_s}"}}'
+        )
+
+    edificios_json = "[" + ",".join(edificios_js) + "]"
 
     # ── Estadísticas
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("En el mapa", len(marcadores))
-    col_b.metric("Sin dirección", len(sin_direccion))
-    col_c.metric("Total filtrados", len(df_m))
+    c_a, c_b, c_c = st.columns(3)
+    c_a.metric("Con dirección", len(edificios_js))
+    c_b.metric("Sin dirección", len(sin_dir))
+    c_c.metric("Total filtrados", len(df_m))
 
-    if not marcadores:
-        st.info("No hay proyectos con dirección registrada para los filtros seleccionados. Agrega las direcciones en la pantalla 'Actualizar Estado' → pestaña 'Editar información'.")
-    else:
-        # ── Generar JavaScript de marcadores
-        # Tooltip = hover (nombre), Popup = clic (detalle completo)
-        markers_js = ""
-        for m in marcadores:
-            nombre_safe = m["nombre"].replace("'", "\'").replace('"', '\"')
-            nota_safe   = m["nota"].replace("'", "\'").replace('"', '\"').replace("\n"," ")
-            dir_safe    = m["dir"].replace("'", "\'").replace('"', '\"')
-            valor_str   = cop(m["valor"]) if m["valor"] else ""
-
-            popup_html = (
-                f"<div style='font-family:Inter,sans-serif;min-width:200px;max-width:260px'>"
-                f"<div style='font-weight:700;font-size:13px;color:#0F172A;margin-bottom:5px'>"
-                f"{m['icon']} {nombre_safe}</div>"
-                f"<div style='font-size:11px;background:{m['color']}18;color:{m['color']};"
-                f"font-weight:600;padding:2px 7px;border-radius:20px;display:inline-block;margin-bottom:5px'>"
-                f"{m['label']}</div>"
-                f"<div style='font-size:11px;color:#334155;margin-bottom:2px'>📍 {dir_safe}</div>"
-                f"<div style='font-size:11px;color:#334155;margin-bottom:2px'>👤 {m['comercial']}</div>"
-                f"{'<div style=chr(34)font-size:11px;color:#059669;font-weight:600;margin-bottom:2px chr(34)>💰 ' + valor_str + '</div>' if valor_str else ''}"
-                f"{'<div style=chr(34)font-size:10.5px;color:#64748B;margin-top:5px;border-top:1px solid #F1F5F9;padding-top:5px chr(34)>' + nota_safe + '</div>' if nota_safe else ''}"
-                f"</div>"
-            )
-
-            markers_js += f"""
-        var marker_{len(markers_js)%10000} = L.circleMarker([{m["lat"]}, {m["lng"]}], {{
-            radius: 10,
-            fillColor: '{m["color"]}',
-            color: 'white',
-            weight: 2.5,
-            opacity: 1,
-            fillOpacity: 0.88
-        }})
-        .bindTooltip('<strong>{nombre_safe}</strong>', {{
-            permanent: false,
-            direction: 'top',
-            offset: [0, -8],
-            className: 'tooltip-edificio'
-        }})
-        .bindPopup(`{popup_html.replace(chr(34),'&quot;')}`)
-        .addTo(map);
-"""
-
-        # Referencia Alto 61
-        markers_js += """
-        L.marker([4.6560, -74.0618], {
-            icon: L.divIcon({
-                html: '<div style="background:#0D9488;color:white;font-size:9px;font-weight:700;padding:3px 8px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.35)">⭐ ALTO 61</div>',
-                iconAnchor: [35, 10], className: ''
-            })
-        }).bindTooltip('Alto 61 — Edificio modelo', {direction:'top'}).addTo(map);
-"""
-
-        mapa_html = f"""<!DOCTYPE html>
+    # ── HTML del mapa — geocodificación en el browser con Nominatim
+    mapa_html = f"""<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
@@ -2295,61 +2193,121 @@ def pg_mapa():
   body{{margin:0;padding:0}}
   #map{{height:540px;width:100%;border-radius:10px}}
   .leaflet-popup-content-wrapper{{border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18)}}
-  .leaflet-popup-content{{margin:12px 14px}}
-  .tooltip-edificio{{background:#0F172A;color:white;border:none;border-radius:6px;
-    font-family:Inter,sans-serif;font-size:11.5px;font-weight:600;
-    padding:4px 9px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}
-  .tooltip-edificio::before{{border-top-color:#0F172A !important}}
+  .leaflet-popup-content{{margin:12px 14px;min-width:190px}}
+  .ttip{{background:#0F172A !important;color:white !important;border:none !important;
+    border-radius:6px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;
+    padding:5px 10px;box-shadow:0 2px 8px rgba(0,0,0,.35)}}
+  .ttip::before{{border-top-color:#0F172A !important}}
+  #status{{position:absolute;top:10px;left:50%;transform:translateX(-50%);
+    background:white;padding:6px 14px;border-radius:20px;font-size:11px;
+    font-family:Inter,sans-serif;color:#334155;box-shadow:0 2px 8px rgba(0,0,0,.15);
+    z-index:1000;display:none}}
   .leyenda{{background:white;border-radius:10px;padding:10px 14px;
-    box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:2;min-width:150px}}
+    box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:2.1}}
   .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;
     margin-right:5px;vertical-align:middle;border:2px solid white;
-    box-shadow:0 1px 3px rgba(0,0,0,.3)}}
+    box-shadow:0 1px 3px rgba(0,0,0,.25)}}
 </style>
-</head>
-<body>
+</head><body>
+<div id="status">🔍 Geocodificando edificios...</div>
 <div id="map"></div>
 <script>
-  var map = L.map('map', {{zoomControl:true}}).setView([4.672, -74.055], 12);
-  L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-    attribution: '© OpenStreetMap',
-    maxZoom: 18
-  }}).addTo(map);
+var map = L.map('map').setView([4.672, -74.055], 12);
+L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{
+  attribution:'© OpenStreetMap',maxZoom:18
+}}).addTo(map);
 
-{markers_js}
+// Alto 61 — edificio modelo (coordenadas exactas)
+L.marker([4.6560, -74.0618],{{
+  icon:L.divIcon({{
+    html:'<div style="background:#0D9488;color:white;font-size:9px;font-weight:700;padding:4px 9px;border-radius:6px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.35)">⭐ ALTO 61<br><span style=\"font-size:8px;opacity:.8\">Calle 61 #3F-08</span></div>',
+    iconAnchor:[40,12],className:''
+  }})
+}}).bindTooltip('<strong>⭐ Alto 61 — Edificio Modelo</strong><br>Calle 61 #3F-08, Bogotá',{{className:'ttip',direction:'top'}}).addTo(map);
 
-  // Leyenda
-  var legend = L.control({{position:'bottomright'}});
-  legend.onAdd = function(map) {{
-    var div = L.DomUtil.create('div','leyenda');
-    div.innerHTML = '<strong style="font-size:12px">Estados</strong><br>'
-      + '<span class="dot" style="background:#D97706"></span>En evaluación<br>'
-      + '<span class="dot" style="background:#F59E0B"></span>Contacto frío<br>'
-      + '<span class="dot" style="background:#EF4444"></span>Negociando<br>'
-      + '<span class="dot" style="background:#0EA5E9"></span>Stand-by vig.<br>'
-      + '<span class="dot" style="background:#3B82F6"></span>Lead nuevo<br>'
-      + '<span class="dot" style="background:#059669"></span>Contrato cerrado';
-    return div;
-  }};
-  legend.addTo(map);
-</script>
-</body></html>"""
+// Lista de edificios a geocodificar
+var edificios = {edificios_json};
+var total = edificios.length;
+var procesados = 0;
+var status = document.getElementById('status');
+if(total > 0) status.style.display='block';
 
-        st.components.v1.html(mapa_html, height=560, scrolling=False)
+function geocodificar(ed, idx) {{
+  var url = 'https://nominatim.openstreetmap.org/search?q=' + 
+    encodeURIComponent(ed.dir) + '&format=json&limit=1&countrycodes=co';
+  
+  fetch(url, {{headers:{{'User-Agent':'AgoraTech-CRM/1.0'}}  }})
+    .then(r => r.json())
+    .then(data => {{
+      procesados++;
+      status.textContent = '🔍 Geocodificando... ' + procesados + '/' + total;
+      if(data && data.length > 0) {{
+        var lat = parseFloat(data[0].lat);
+        var lng = parseFloat(data[0].lon);
+        var popup = '<div style="font-family:Inter,sans-serif">'
+          + '<div style="font-weight:700;font-size:13px;color:#0F172A;margin-bottom:5px">' + ed.nombre + '</div>'
+          + '<div style="font-size:11px;background:' + ed.color + '20;color:' + ed.color + ';font-weight:600;padding:2px 8px;border-radius:20px;display:inline-block;margin-bottom:6px">' + ed.label + '</div>'
+          + '<div style="font-size:11px;color:#334155;margin-bottom:2px">📍 ' + ed.dir.replace(', Colombia','') + '</div>'
+          + '<div style="font-size:11px;color:#334155;margin-bottom:2px">👤 ' + ed.com + '</div>'
+          + (ed.valor ? '<div style="font-size:11px;color:#059669;font-weight:600;margin-bottom:2px">💰 ' + ed.valor + '</div>' : '')
+          + (ed.nota ? '<div style="font-size:10.5px;color:#64748B;margin-top:5px;border-top:1px solid #F1F5F9;padding-top:5px">' + ed.nota + '</div>' : '')
+          + '</div>';
+        L.circleMarker([lat, lng], {{
+          radius: 10,
+          fillColor: ed.color,
+          color: 'white',
+          weight: 2.5,
+          opacity: 1,
+          fillOpacity: 0.88
+        }})
+        .bindTooltip('<strong>' + ed.nombre + '</strong>', {{
+          permanent:false, direction:'top', offset:[0,-8], className:'ttip'
+        }})
+        .bindPopup(popup)
+        .addTo(map);
+      }}
+      if(procesados >= total) {{
+        status.style.display = 'none';
+      }}
+    }})
+    .catch(() => {{ procesados++; if(procesados>=total) status.style.display='none'; }});
+}}
 
-    # ── Edificios sin dirección
-    if sin_direccion:
-        with st.expander(f"📍 {len(sin_direccion)} edificios sin dirección registrada — click para agregar"):
+// Geocodificar con delay para no saturar Nominatim (máx 1 req/seg)
+edificios.forEach(function(ed, i) {{
+  setTimeout(function(){{ geocodificar(ed, i); }}, i * 1200);
+}});
+
+// Leyenda
+var legend = L.control({{position:'bottomright'}});
+legend.onAdd = function() {{
+  var d = L.DomUtil.create('div','leyenda');
+  d.innerHTML = '<strong style="font-size:11.5px">Estados</strong><br>'
+    + '<span class="dot" style="background:#D97706"></span>En evaluación<br>'
+    + '<span class="dot" style="background:#F59E0B"></span>Contacto frío<br>'
+    + '<span class="dot" style="background:#EF4444"></span>Negociando<br>'
+    + '<span class="dot" style="background:#0EA5E9"></span>Stand-by vig.<br>'
+    + '<span class="dot" style="background:#3B82F6"></span>Lead nuevo<br>'
+    + '<span class="dot" style="background:#059669"></span>Contrato cerrado';
+  return d;
+}};
+legend.addTo(map);
+</script></body></html>"""
+
+    st.components.v1.html(mapa_html, height=570, scrolling=False)
+
+    # Edificios sin dirección
+    if sin_dir:
+        with st.expander(f"📍 {len(sin_dir)} edificios sin dirección — clic para agregarla"):
             st.markdown(
-                '<div class="al amber"><div>💡</div><div>Agrega la dirección de estos edificios en '
-                '<strong>Actualizar Estado → Editar información</strong> y aparecerán automáticamente en el mapa.</div></div>',
+                '<div class="al amber"><div>💡</div><div>Agrega la dirección en '
+                '<strong>Actualizar Estado → Editar información</strong> y aparecerá automáticamente en el mapa.</div></div>',
                 unsafe_allow_html=True)
             cols = st.columns(3)
-            for i, ed in enumerate(sin_direccion):
+            for i, nombre in enumerate(sin_dir):
                 with cols[i % 3]:
-                    if st.button(f"📝 {ed['nombre'][:25]}", key=f"mapa_dir_{i}",
-                                 use_container_width=True):
-                        st.session_state.editing = ed["nombre"]
+                    if st.button(f"📝 {nombre[:22]}", key=f"mdir_{i}", use_container_width=True):
+                        st.session_state.editing = nombre
                         st.session_state.page = "Actualizar Estado"
                         st.rerun()
 
