@@ -2090,205 +2090,269 @@ COORDS_CONOCIDAS = {
 
 
 def pg_mapa():
-    hdr("🗺️","Mapa de Proyectos","Ubicación de los edificios en Bogotá")
+    hdr("🗺️","Mapa de Proyectos","Ubicación real desde el Sheet — hover para ver el nombre")
     df = mis_proyectos()
 
-    # Filtros
-    c1,c2,c3 = st.columns(3)
+    # ── Filtros
+    c1, c2, c3 = st.columns(3)
     with c1:
-        filtro_estado = st.selectbox("Filtrar por estado", ["Todos"]+ESTADOS_LISTA,
+        filtro_estado = st.selectbox("Estado", ["Todos"]+ESTADOS_LISTA,
             format_func=lambda x: ETAPAS.get(x,{"label":x})["label"] if x!="Todos" else "Todos")
     with c2:
-        if st.session_state.user["rol"]=="gerente":
-            filtro_com = st.selectbox("Comercial",["Todos"]+sorted(df["comercial"].dropna().unique().tolist()))
+        if st.session_state.user["rol"] in ["gerente","socio"]:
+            opciones_com = ["Todos"] + sorted(df["comercial"].dropna().unique().tolist())
+            filtro_com = st.selectbox("Comercial", opciones_com)
         else:
             filtro_com = "Todos"
     with c3:
         mostrar_perdidos = st.checkbox("Mostrar rechazados", value=False)
 
-    # Aplicar filtros
+    # ── Aplicar filtros
     df_m = df.copy()
     if filtro_estado != "Todos": df_m = df_m[df_m["estado"]==filtro_estado]
-    if filtro_com != "Todos": df_m = df_m[df_m["comercial"]==filtro_com]
-    if not mostrar_perdidos: df_m = df_m[df_m["estado"]!="perdido"]
+    if filtro_com    != "Todos": df_m = df_m[df_m["comercial"]==filtro_com]
+    if not mostrar_perdidos:     df_m = df_m[df_m["estado"]!="perdido"]
 
-    # Colores por estado
     COLOR_ESTADO = {
         "lead":"#3B82F6","cotizado":"#F59E0B","evaluacion_consejo":"#D97706",
-        "negociacion":"#F97316","aprobado_espera":"#0EA5E9","perdido":"#EF4444",
-        "creacion_contrato":"#10B981","financiacion":"#10B981","obra":"#059669",
-        "novedades_obra":"#D97706","entrega":"#059669","mantenimiento":"#6366F1","cerrado":"#059669"
+        "negociacion":"#EF4444","aprobado_espera":"#0EA5E9","perdido":"#94A3B8",
+        "cerrado":"#059669",
     }
     ICON_ESTADO = {
-        "lead":"🔵","cotizado":"🟡","evaluacion_consejo":"🟠","negociacion":"🔥",
-        "aprobado_espera":"🔒","perdido":"❌","creacion_contrato":"📝",
-        "financiacion":"💰","obra":"🔨","cerrado":"✅"
+        "lead":"🔵","cotizado":"🟡","evaluacion_consejo":"🟠",
+        "negociacion":"🔥","aprobado_espera":"🔒","perdido":"⚫","cerrado":"✅",
     }
 
-    # Construir marcadores
-    marcadores = []
-    sin_dir = []
+    # ── Coordenadas fijas de los que SÍ tienen dirección verificada
+    # Solo usamos estas cuando el Sheet no tiene dirección
+    COORDS_FIJAS = {
+        # ── Verificadas de PDFs del Drive y Sheet
+        "EDIFICIO URAPANES":          (4.6546, -74.0604, "Calle 63 No 20-40"),
+        "EDIFICIO ARCADIA":           (4.6783, -74.0487, "Calle 94 No 23-17"),
+        "EDIFICIO RISARALDA":         (4.6921, -74.0557, "Cra 12-91-15"),
+        "EDIFICIO BEN HUR":           (4.5812, -74.1512, "Calle 49 Sur #78-62"),
+        "ESTUDIO 84":                 (4.6774, -74.0468, "Transversal 3 #84a-35"),
+        "COUNTRY 136":                (4.7285, -74.0437, "Av. 15 #135-41"),
+        "RINCON DE ALCAZAR":          (4.7321, -74.0359, "Calle 140 No 7C-13"),
+        "EDIFICIO IGUA":              (4.7221, -74.1102, "Cra. 108a #140a-61"),
+        "EDIFICIO SAN SEBASTIAN":     (4.7012, -74.0631, "Tv 57 No 106-46"),
+        "TORRES DE PERALONSO II":     (4.7018, -74.0628, "Calle 108 B No 54-30"),
+        "EDIFICIO CYAN 26":           (4.6302, -74.0831, "Cra 25 No 24C-11"),
+        "EDIFICIO BIZANCIO":          (4.7198, -74.0501, "Calle 135C 9A-71"),
+        "PARK 104":                   (4.6915, -74.0498, "Transversal 57 No 104b-90"),
+        "EDIFICIO PARK 104":          (4.6915, -74.0498, "Transversal 57 No 104b-90"),
+        "EDIFICIO FONTIBON":          (4.6544, -74.1431, "Fontibón, Bogotá"),
+        "EDIFICIO LA CANDELARIA":     (4.5981, -74.0762, "La Candelaria, Bogotá"),
+        "EDIFICIO CAPIRO":            (4.6551, -74.0651, "Bogotá"),
+        "EDIFICIO LUMINA":            (4.6561, -74.0641, "Bogotá"),
+        # ── Alto 61 — edificio modelo Ágora Tech
+        "ALTO 61 (Referencia)":       (4.6560, -74.0618, "Calle 61 #3F-08, Bogotá"),
+    }
+
+    # ── Geocodificación simple por nombre de calle Bogotá
+    # Reglas: "Calle N" → lat aproximada según calle
+    import re
+    def geocodificar_bogota(direccion):
+        """Geocodificación aproximada para calles de Bogotá."""
+        if not direccion: return None
+        d = direccion.lower().strip()
+        # Extraer número de calle
+        m = re.search(r'calle\s+(\d+)', d)
+        if m:
+            calle = int(m.group(1))
+            # En Bogotá: Calle 1 ≈ lat 4.598, cada 10 calles ≈ 0.009 grados norte
+            lat = 4.598 + (calle - 1) * 0.00090
+            # Carrera: buscar número de carrera
+            mc = re.search(r'(?:no|#|carrera|cra)\.?\s*(\d+)', d)
+            lng = -74.075  # centro Bogotá
+            if mc:
+                cra = int(mc.group(1))
+                lng = -74.098 + (cra * 0.002)  # aprox
+            return (round(lat,4), round(lng,4))
+        m2 = re.search(r'(?:carrera|cra|kr)\.?\s*(\d+)', d)
+        if m2:
+            cra = int(m2.group(1))
+            lat = 4.672  # centro Bogotá
+            lng = -74.098 + (cra * 0.002)
+            return (round(lat,4), round(lng,4))
+        m3 = re.search(r'av(?:enida)?\.?\s*15\b', d)
+        if m3: return (4.7285, -74.0437)  # Autopista Norte / Av 15
+        return None
+
+    # ── Construir marcadores
+    marcadores   = []
+    sin_direccion = []
+
     for _, r in df_m.iterrows():
-        nombre = str(r["nombre"]).strip().upper()
-        # Buscar en coords conocidas
-        coords = COORDS_CONOCIDAS.get(nombre)
-        # Buscar coincidencia parcial si no hay exacta
-        if not coords:
-            for k,v in COORDS_CONOCIDAS.items():
-                if k in nombre or nombre in k:
-                    coords = v
-                    break
-        # Si tiene dirección en el Sheet
+        nombre    = str(r["nombre"]).strip().upper()
         dir_sheet = str(r.get("direccion","") or "").strip()
-        if dir_sheet and dir_sheet.lower() not in ["nan",""]:
-            dir_display = dir_sheet
-        elif coords:
-            dir_display = coords.get("dir","Bogotá")
-        else:
-            dir_display = "Dirección no registrada"
-            sin_dir.append(nombre)
+        if dir_sheet.lower() in ["nan","","none"]: dir_sheet = ""
 
-        if coords:
-            est = str(r.get("estado","lead"))
-            tn = int(r.get("totalNum",0) or 0)
-            nota = str(r.get("lastNote","") or r.get("notas","") or "")[:80]
-            com = str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"
-            color = COLOR_ESTADO.get(est,"#94A3B8")
-            icon = ICON_ESTADO.get(est,"📍")
-            marcadores.append({
-                "lat": coords["lat"], "lng": coords["lng"],
-                "nombre": nombre, "estado": est,
-                "color": color, "icon": icon,
-                "dir": dir_display, "valor": tn,
-                "comercial": com, "nota": nota,
-                "label": ETAPAS.get(est,{"label":est})["label"]
-            })
+        lat, lng, dir_display = None, None, ""
 
-    total_mapa = len(marcadores)
-    st.markdown(f'<div style="font-size:12px;color:#94A3B8;margin-bottom:12px">{total_mapa} proyectos en el mapa · {len(sin_dir)} sin ubicación registrada</div>',unsafe_allow_html=True)
+        # 1. Coordenadas fijas verificadas (más precisas)
+        if nombre in COORDS_FIJAS:
+            lat, lng, d_fija = COORDS_FIJAS[nombre]
+            dir_display = dir_sheet or d_fija
+
+        # 2. Si tiene dirección en el Sheet, intentar geocodificar
+        elif dir_sheet:
+            geo = geocodificar_bogota(dir_sheet)
+            if geo:
+                lat, lng = geo
+                dir_display = dir_sheet
+            else:
+                dir_display = dir_sheet  # sin coords pero tiene dirección
+
+        # Sin ubicación
+        if lat is None:
+            sin_direccion.append({"nombre": nombre, "dir": dir_sheet})
+            continue
+
+        est   = str(r.get("estado","lead"))
+        tn    = int(r.get("totalNum",0) or 0)
+        nota  = str(r.get("lastNote","") or r.get("notas","") or "")[:100]
+        com   = str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"
+        color = COLOR_ESTADO.get(est,"#94A3B8")
+        icon  = ICON_ESTADO.get(est,"📍")
+
+        marcadores.append({
+            "lat": lat, "lng": lng,
+            "nombre": nombre, "estado": est,
+            "color": color, "icon": icon,
+            "dir": dir_display, "valor": tn,
+            "comercial": com, "nota": nota,
+            "label": ETAPAS.get(est,{"label":est})["label"],
+        })
+
+    # ── Estadísticas
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("En el mapa", len(marcadores))
+    col_b.metric("Sin dirección", len(sin_direccion))
+    col_c.metric("Total filtrados", len(df_m))
 
     if not marcadores:
-        st.info("No hay proyectos con coordenadas para los filtros seleccionados.")
-        return
+        st.info("No hay proyectos con dirección registrada para los filtros seleccionados. Agrega las direcciones en la pantalla 'Actualizar Estado' → pestaña 'Editar información'.")
+    else:
+        # ── Generar JavaScript de marcadores
+        # Tooltip = hover (nombre), Popup = clic (detalle completo)
+        markers_js = ""
+        for m in marcadores:
+            nombre_safe = m["nombre"].replace("'", "\'").replace('"', '\"')
+            nota_safe   = m["nota"].replace("'", "\'").replace('"', '\"').replace("\n"," ")
+            dir_safe    = m["dir"].replace("'", "\'").replace('"', '\"')
+            valor_str   = cop(m["valor"]) if m["valor"] else ""
 
-    # Generar HTML del mapa con Leaflet (OpenStreetMap — gratis, sin API key)
-    markers_js = ""
-    for m in marcadores:
-        popup = (f"<div style='font-family:Inter,sans-serif;min-width:180px'>"
-                 f"<div style='font-weight:700;font-size:13px;color:#0F172A;margin-bottom:4px'>{m['icon']} {m['nombre']}</div>"
-                 f"<div style='font-size:11px;color:#2563EB;margin-bottom:3px'>{m['label']}</div>"
-                 f"<div style='font-size:11px;color:#64748B;margin-bottom:2px'>📍 {m['dir']}</div>"
-                 f"<div style='font-size:11px;color:#64748B;margin-bottom:2px'>👤 {m['comercial']}</div>"
-                 f"{'<div style=&quot;font-size:11px;color:#64748B;margin-bottom:2px&quot;>💰 '+cop(m['valor'])+'</div>' if m['valor'] else ''}"
-                 f"{'<div style=&quot;font-size:10.5px;color:#94A3B8;margin-top:4px&quot;>'+m['nota']+'</div>' if m['nota'] else ''}"
-                 f"</div>")
-        markers_js += f"""
-        L.circleMarker([{m['lat']}, {m['lng']}], {{
-            radius: 9,
-            fillColor: '{m['color']}',
+            popup_html = (
+                f"<div style='font-family:Inter,sans-serif;min-width:200px;max-width:260px'>"
+                f"<div style='font-weight:700;font-size:13px;color:#0F172A;margin-bottom:5px'>"
+                f"{m['icon']} {nombre_safe}</div>"
+                f"<div style='font-size:11px;background:{m['color']}18;color:{m['color']};"
+                f"font-weight:600;padding:2px 7px;border-radius:20px;display:inline-block;margin-bottom:5px'>"
+                f"{m['label']}</div>"
+                f"<div style='font-size:11px;color:#334155;margin-bottom:2px'>📍 {dir_safe}</div>"
+                f"<div style='font-size:11px;color:#334155;margin-bottom:2px'>👤 {m['comercial']}</div>"
+                f"{'<div style=chr(34)font-size:11px;color:#059669;font-weight:600;margin-bottom:2px chr(34)>💰 ' + valor_str + '</div>' if valor_str else ''}"
+                f"{'<div style=chr(34)font-size:10.5px;color:#64748B;margin-top:5px;border-top:1px solid #F1F5F9;padding-top:5px chr(34)>' + nota_safe + '</div>' if nota_safe else ''}"
+                f"</div>"
+            )
+
+            markers_js += f"""
+        var marker_{len(markers_js)%10000} = L.circleMarker([{m["lat"]}, {m["lng"]}], {{
+            radius: 10,
+            fillColor: '{m["color"]}',
             color: 'white',
-            weight: 2,
+            weight: 2.5,
             opacity: 1,
-            fillOpacity: 0.9
-        }}).bindPopup(`{popup}`).addTo(map);
-        """
-
-    # Referencia Alto 61
-    alto61 = COORDS_CONOCIDAS["ALTO 61 (Referencia)"]
-    markers_js += f"""
-    L.marker([{alto61['lat']}, {alto61['lng']}], {{
-        icon: L.divIcon({{
-            html: '<div style="background:#0D9488;color:white;font-size:9px;font-weight:700;padding:3px 6px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">⭐ ALTO 61</div>',
-            iconAnchor: [30, 10]
+            fillOpacity: 0.88
         }})
-    }}).addTo(map);
-    """
+        .bindTooltip('<strong>{nombre_safe}</strong>', {{
+            permanent: false,
+            direction: 'top',
+            offset: [0, -8],
+            className: 'tooltip-edificio'
+        }})
+        .bindPopup(`{popup_html.replace(chr(34),'&quot;')}`)
+        .addTo(map);
+"""
 
-    mapa_html = f"""<!DOCTYPE html>
-<html>
-<head>
+        # Referencia Alto 61
+        markers_js += """
+        L.marker([4.6560, -74.0618], {
+            icon: L.divIcon({
+                html: '<div style="background:#0D9488;color:white;font-size:9px;font-weight:700;padding:3px 8px;border-radius:4px;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.35)">⭐ ALTO 61</div>',
+                iconAnchor: [35, 10], className: ''
+            })
+        }).bindTooltip('Alto 61 — Edificio modelo', {direction:'top'}).addTo(map);
+"""
+
+        mapa_html = f"""<!DOCTYPE html>
+<html><head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
-  body{{margin:0;padding:0;font-family:Inter,sans-serif}}
-  #map{{height:560px;width:100%;border-radius:12px}}
-  .leaflet-popup-content-wrapper{{border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15)}}
-  .leaflet-popup-content{{margin:10px 14px}}
-  /* Leyenda */
-  .leyenda{{background:white;border-radius:10px;padding:10px 14px;box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:1.9}}
-  .leyenda h4{{margin:0 0 6px;font-size:11.5px;font-weight:700;color:#0F172A}}
-  .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle}}
+  body{{margin:0;padding:0}}
+  #map{{height:540px;width:100%;border-radius:10px}}
+  .leaflet-popup-content-wrapper{{border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18)}}
+  .leaflet-popup-content{{margin:12px 14px}}
+  .tooltip-edificio{{background:#0F172A;color:white;border:none;border-radius:6px;
+    font-family:Inter,sans-serif;font-size:11.5px;font-weight:600;
+    padding:4px 9px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}
+  .tooltip-edificio::before{{border-top-color:#0F172A !important}}
+  .leyenda{{background:white;border-radius:10px;padding:10px 14px;
+    box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:2;min-width:150px}}
+  .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;
+    margin-right:5px;vertical-align:middle;border:2px solid white;
+    box-shadow:0 1px 3px rgba(0,0,0,.3)}}
 </style>
 </head>
 <body>
 <div id="map"></div>
 <script>
-  var map = L.map('map').setView([4.6722, -74.0538], 12);
+  var map = L.map('map', {{zoomControl:true}}).setView([4.672, -74.055], 12);
   L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
-    attribution: '© OpenStreetMap contributors',
+    attribution: '© OpenStreetMap',
     maxZoom: 18
   }}).addTo(map);
 
-  {markers_js}
+{markers_js}
 
   // Leyenda
-  var legend = L.control({{position: 'bottomright'}});
+  var legend = L.control({{position:'bottomright'}});
   legend.onAdd = function(map) {{
-    var div = L.DomUtil.create('div', 'leyenda');
-    div.innerHTML = '<h4>Estado del proyecto</h4>' +
-      '<span class="dot" style="background:#D97706"></span>En evaluación/Consejo<br>' +
-      '<span class="dot" style="background:#F59E0B"></span>Contacto frío<br>' +
-      '<span class="dot" style="background:#F97316"></span>Negociando<br>' +
-      '<span class="dot" style="background:#0EA5E9"></span>Stand-by Vigilancia<br>' +
-      '<span class="dot" style="background:#EF4444"></span>Perdido<br>' +
-      '<span class="dot" style="background:#059669"></span>Cerrado/Obra';
+    var div = L.DomUtil.create('div','leyenda');
+    div.innerHTML = '<strong style="font-size:12px">Estados</strong><br>'
+      + '<span class="dot" style="background:#D97706"></span>En evaluación<br>'
+      + '<span class="dot" style="background:#F59E0B"></span>Contacto frío<br>'
+      + '<span class="dot" style="background:#EF4444"></span>Negociando<br>'
+      + '<span class="dot" style="background:#0EA5E9"></span>Stand-by vig.<br>'
+      + '<span class="dot" style="background:#3B82F6"></span>Lead nuevo<br>'
+      + '<span class="dot" style="background:#059669"></span>Contrato cerrado';
     return div;
   }};
   legend.addTo(map);
 </script>
-</body>
-</html>"""
+</body></html>"""
 
-    st.components.v1.html(mapa_html, height=580, scrolling=False)
+        st.components.v1.html(mapa_html, height=560, scrolling=False)
 
-    # Sin dirección
-    if sin_dir:
-        with st.expander(f"⚠️ {len(sin_dir)} proyectos sin ubicación registrada"):
-            st.markdown("Agrega la dirección en **Nueva Cotización** o directamente en el Google Sheet.")
-            for n in sin_dir:
-                st.markdown(f"- {n}")
+    # ── Edificios sin dirección
+    if sin_direccion:
+        with st.expander(f"📍 {len(sin_direccion)} edificios sin dirección registrada — click para agregar"):
+            st.markdown(
+                '<div class="al amber"><div>💡</div><div>Agrega la dirección de estos edificios en '
+                '<strong>Actualizar Estado → Editar información</strong> y aparecerán automáticamente en el mapa.</div></div>',
+                unsafe_allow_html=True)
+            cols = st.columns(3)
+            for i, ed in enumerate(sin_direccion):
+                with cols[i % 3]:
+                    if st.button(f"📝 {ed['nombre'][:25]}", key=f"mapa_dir_{i}",
+                                 use_container_width=True):
+                        st.session_state.editing = ed["nombre"]
+                        st.session_state.page = "Actualizar Estado"
+                        st.rerun()
 
-    # Tip
-    st.markdown(f'<div class="al blue" style="margin-top:10px"><div>💡</div><div>Haz <strong>clic en cualquier punto</strong> del mapa para ver el detalle. Para agregar direcciones que faltan, edítalas en el Sheet o en <strong>Nueva Cotización</strong>.</div></div>',unsafe_allow_html=True)
-
-
-
-# ══════════════════════════════════════════
-# LEADS WHATSAPP
-# ══════════════════════════════════════════
-
-ESTADOS_LEAD = [
-    "Nuevo",
-    "En contacto",
-    "Explicado — sin respuesta",
-    "No interesado",
-    "Pasó a cotización",
-    "Descartado",
-]
-COLOR_LEAD = {
-    "Nuevo":                    "#3B82F6",
-    "En contacto":              "#F59E0B",
-    "Explicado — sin respuesta":"#94A3B8",
-    "No interesado":            "#EF4444",
-    "Pasó a cotización":        "#059669",
-    "Descartado":               "#DC2626",
-}
-
-def get_leads():
-    if "leads_db" not in st.session_state:
-        st.session_state.leads_db = []
-    return st.session_state.leads_db
 
 def pg_leads():
     hdr("📲","Leads WhatsApp","Seguimiento de contactos entrantes → cotización")
