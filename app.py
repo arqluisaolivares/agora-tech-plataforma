@@ -2090,10 +2090,9 @@ COORDS_CONOCIDAS = {
 
 
 def pg_mapa():
-    hdr("🗺️","Mapa de Proyectos","Pasa el mouse sobre un punto para ver el nombre del edificio")
+    hdr("\U0001f5fa\ufe0f","Mapa de Proyectos","Pasa el mouse sobre un punto para ver el nombre")
     df = mis_proyectos()
 
-    # ── Filtros
     c1, c2, c3 = st.columns(3)
     with c1:
         filtro_estado = st.selectbox("Estado", ["Todos"]+ESTADOS_LISTA,
@@ -2101,7 +2100,7 @@ def pg_mapa():
     with c2:
         if st.session_state.user["rol"] in ["gerente","socio"]:
             filtro_com = st.selectbox("Comercial",
-                ["Todos"] + sorted(df["comercial"].dropna().unique().tolist()))
+                ["Todos"]+sorted(df["comercial"].dropna().unique().tolist()))
         else:
             filtro_com = "Todos"
     with c3:
@@ -2114,12 +2113,10 @@ def pg_mapa():
 
     COLOR_ESTADO = {
         "lead":"#3B82F6","cotizado":"#F59E0B","evaluacion_consejo":"#D97706",
-        "negociacion":"#EF4444","aprobado_espera":"#0EA5E9","perdido":"#94A3B8",
-        "cerrado":"#059669",
+        "negociacion":"#EF4444","aprobado_espera":"#0EA5E9",
+        "perdido":"#94A3B8","cerrado":"#059669",
     }
 
-    # ── Función de interpolación para nomenclatura Bogotá
-    # Calibrada con puntos reales verificados en Google Maps
     CALLES_T = {1:4.5983,7:4.6039,13:4.6091,19:4.6138,26:4.6198,
         34:4.6262,45:4.6349,53:4.6411,57:4.6443,63:4.6491,
         67:4.6521,72:4.6561,80:4.6625,85:4.6665,94:4.6740,
@@ -2132,230 +2129,165 @@ def pg_mapa():
         50:-74.1138,54:-74.1180,57:-74.1218,68:-74.1318,78:-74.1468,
         80:-74.1498,86:-74.1558,100:-74.1698,108:-74.1762}
 
-    def _interp(tabla, val):
-        keys = sorted(tabla.keys())
-        if val <= keys[0]: return tabla[keys[0]]
-        if val >= keys[-1]: return tabla[keys[-1]]
-        for i in range(len(keys)-1):
-            k1,k2=keys[i],keys[i+1]
-            if k1<=val<=k2:
-                t=(val-k1)/(k2-k1)
-                return tabla[k1]+t*(tabla[k2]-tabla[k1])
+    def _interp(t, v):
+        ks=sorted(t.keys())
+        if v<=ks[0]: return t[ks[0]]
+        if v>=ks[-1]: return t[ks[-1]]
+        for i in range(len(ks)-1):
+            k1,k2=ks[i],ks[i+1]
+            if k1<=v<=k2: return t[k1]+(t[k2]-t[k1])*(v-k1)/(k2-k1)
 
-    def bogota_coords(cl, cr, mc=0, mcr=0):
-        lat = _interp(CALLES_T, abs(cl))
-        if cl < 0: lat = 4.5983-(lat-4.5983)
-        lat += mc*0.000009
-        lng = _interp(CARRAS_T, cr)
-        lng += mcr*0.000009
-        return round(lat,4), round(lng,4)
+    def bcoords(cl, cr, mc=0):
+        lat=_interp(CALLES_T,abs(cl)); lat=4.5983-(lat-4.5983) if cl<0 else lat
+        return round(lat+mc*0.000009,4), round(_interp(CARRAS_T,cr),4)
 
-    # ── Coordenadas verificadas de los PDFs del Drive
     COORDS_FIJAS = {
-        "ALTO 61":                  bogota_coords(61,3,8,6),
-        "EDIFICIO ARCADIA":         bogota_coords(94,23,17,0),
-        "EDIFICIO URAPANES":        bogota_coords(63,20,40,0),
-        "COUNTRY 136":              bogota_coords(135,15,41,0),
-        "RINCON DE ALCAZAR":        bogota_coords(140,7,13,0),
-        "EDIFICIO BEN HUR":         bogota_coords(-49,78,62,0),
-        "EDIFICIO RISARALDA":       bogota_coords(91,12,15,0),
-        "EDIFICIO CYAN 26":         bogota_coords(24,25,11,0),
-        "PARK 104":                 bogota_coords(104,57,90,0),
-        "EDIFICIO PARK 104":        bogota_coords(104,57,90,0),
-        "EDIFICIO BIZANCIO":        bogota_coords(135,9,0,71),
-        "EDIFICIO SAN SEBASTIAN":   bogota_coords(106,57,46,0),
-        "TORRES DE PERALONSO II":   bogota_coords(108,54,30,0),
-        "ESTUDIO 84":               bogota_coords(84,3,0,35),
-        "EDIFICIO IGUA":            bogota_coords(140,108,61,0),
-        "EDIFICIO FONTIBON":        bogota_coords(22,100,0,0),
-        "EDIFICIO LA CANDELARIA":   (4.5981,-74.0762),
-        "EDIFICIO CAPIRO":          bogota_coords(67,28,0,0),
-        "EDIFICIO LUMINA":          bogota_coords(68,27,0,0),
+        "EDIFICIO ARCADIA":       bcoords(94,23,17),
+        "EDIFICIO URAPANES":      bcoords(63,20,40),
+        "COUNTRY 136":            bcoords(135,15,41),
+        "RINCON DE ALCAZAR":      bcoords(140,7,13),
+        "EDIFICIO BEN HUR":       bcoords(-49,78,62),
+        "EDIFICIO RISARALDA":     bcoords(91,12,15),
+        "EDIFICIO CYAN 26":       bcoords(24,25,11),
+        "PARK 104":               bcoords(104,57,90),
+        "EDIFICIO PARK 104":      bcoords(104,57,90),
+        "EDIFICIO BIZANCIO":      bcoords(135,9),
+        "EDIFICIO SAN SEBASTIAN": bcoords(106,57,46),
+        "TORRES DE PERALONSO II": bcoords(108,54,30),
+        "ESTUDIO 84":             bcoords(84,3),
+        "EDIFICIO IGUA":          bcoords(140,108,61),
+        "EDIFICIO FONTIBON":      (4.6544,-74.1431),
+        "EDIFICIO LA CANDELARIA": (4.5981,-74.0762),
     }
 
-    # ── Parsear dirección del Sheet y convertir a coords
-    import re as _re
-    def parsear_dir(direccion):
-        """Extrae calle y carrera de una dirección Bogotá y devuelve (lat,lng)."""
-        if not direccion: return None
-        d = direccion.lower().strip()
-        # Patrones: Calle/Cl N No M-P o Cra/Carrera N M-P
-        m_cl = _re.search(r'c(?:alle|l)\.?\s+(\d+)\s*(?:sur|s)?\s*(?:no|#|n)?\s*(\d+)[\s\-]+(\d+)?', d)
-        m_cr = _re.search(r'c(?:arrera|ra|r)\.?\s+(\d+)\s*(?:no|#|n)?\s*(\d+)[\s\-]+(\d+)?', d)
-        m_tv = _re.search(r't(?:ransversal|v)\.?\s+(\d+)\s*(?:no|#|n)?\s*(\d+)', d)
-        m_av = _re.search(r'(?:av(?:enida)?\.?\s*15|autopista\s*norte)', d)
+    import re as _re, json as _json
+
+    def parsear_dir(d):
+        d=d.lower().strip()
         try:
-            if m_cl:
-                cl  = int(m_cl.group(1))
-                if 'sur' in d or ' s ' in d: cl = -cl
-                cr  = int(m_cl.group(2)) if m_cl.group(2) else 7
-                mc  = int(m_cl.group(3)) if m_cl.group(3) else 0
-                return bogota_coords(cl, cr, mc)
-            if m_cr:
-                cr  = int(m_cr.group(1))
-                cl  = int(m_cr.group(2)) if m_cr.group(2) else 70
-                mc  = int(m_cr.group(3)) if m_cr.group(3) else 0
-                return bogota_coords(cl, cr, mc)
-            if m_tv:
-                cr  = int(m_tv.group(1))
-                cl  = int(m_tv.group(2)) if m_tv.group(2) else 100
-                return bogota_coords(cl, cr)
-            if m_av:
-                cl  = int(_re.search(r"(\d{2,3})", d).group(1)) if _re.search(r"(\d{2,3})", d) else 100
-                return bogota_coords(cl, 15)
+            m=_re.search(r"c(?:alle|l)[\.\s]*(\d+)\s*(sur)?[^\d]{1,6}(\d+)[^\d]{1,4}(\d+)?",d)
+            if m:
+                cl=int(m.group(1)); cl=-cl if m.group(2) else cl
+                cr=int(m.group(3)); mc=int(m.group(4)) if m.group(4) else 0
+                return bcoords(cl,cr,mc)
+            m=_re.search(r"(?:c(?:arrera|ra)|kr)[\.\s]*(\d+)[^\d]{1,6}(\d+)",d)
+            if m: return bcoords(int(m.group(2)),int(m.group(1)))
+            m=_re.search(r"t(?:ransversal|v)[\.\s]*(\d+)[^\d]{1,6}(\d+)",d)
+            if m: return bcoords(int(m.group(2)),int(m.group(1)))
         except: pass
         return None
 
-    # ── Construir marcadores
-    marcadores  = []
-    sin_dir     = []
-
+    marcadores=[]
+    sin_dir=[]
     for _, r in df_m.iterrows():
-        nombre    = str(r["nombre"]).strip().upper()
-        dir_sheet = str(r.get("direccion","") or "").strip()
-        if dir_sheet.lower() in ["nan","","none"]: dir_sheet = ""
-
-        lat = lng = None
-        dir_display = ""
-
-        # 1. Coords fijas verificadas del Drive
+        nombre=str(r["nombre"]).strip().upper()
+        dir_sheet=str(r.get("direccion","") or "").strip()
+        if dir_sheet.lower() in ["nan","","none"]: dir_sheet=""
+        coords=None; dir_ok=""
         if nombre in COORDS_FIJAS:
-            lat, lng = COORDS_FIJAS[nombre]
-            dir_display = dir_sheet or nombre
-
-        # 2. Dirección del Sheet → parsear
+            coords=COORDS_FIJAS[nombre]; dir_ok=dir_sheet or nombre
         elif dir_sheet:
-            coords = parsear_dir(dir_sheet)
-            if coords:
-                lat, lng = coords
-                dir_display = dir_sheet
-
-        if lat is None:
-            sin_dir.append(nombre)
-            continue
-
-        est   = str(r.get("estado","lead"))
-        tn    = int(r.get("totalNum",0) or 0)
-        nota  = str(r.get("lastNote","") or r.get("notas","") or "")[:120]
-        com   = str(r.get("comercial","")).split()[0] if r.get("comercial") else "—"
-        color = COLOR_ESTADO.get(est,"#94A3B8")
-        label = ETAPAS.get(est,{"label":est})["label"]
-
-        n_s = nombre.replace('"','').replace("'","")
-        d_s = dir_display.replace('"','').replace("'","")
-        nota_s = nota.replace('"','').replace("'","").replace("\n"," ")
-        valor_s = cop(tn) if tn else ""
-
+            coords=parsear_dir(dir_sheet); dir_ok=dir_sheet if coords else ""
+        if not coords:
+            sin_dir.append(nombre); continue
+        est=str(r.get("estado","lead"))
+        tn=int(r.get("totalNum",0) or 0)
+        nota=str(r.get("lastNote","") or r.get("notas","") or "")[:100]
+        com=str(r.get("comercial","")).split()[0] if r.get("comercial") else ""
+        color=COLOR_ESTADO.get(est,"#94A3B8")
+        label=ETAPAS.get(est,{"label":est})["label"]
+        def _s(x): return str(x).replace("'","`")
         marcadores.append({
-            "lat":lat,"lng":lng,"nombre":n_s,"dir":d_s,"color":color,
-            "label":label,"com":com,"valor":valor_s,"nota":nota_s,
+            "lat":coords[0],"lng":coords[1],
+            "nombre":_s(nombre),"dir":_s(dir_ok),"color":color,
+            "label":_s(label),"com":_s(com),
+            "valor":cop(tn) if tn else "","nota":_s(nota),
         })
 
-    # ── KPIs del mapa
-    c_a,c_b,c_c = st.columns(3)
-    c_a.metric("En el mapa", len(marcadores))
-    c_b.metric("Sin dirección", len(sin_dir))
-    c_c.metric("Total filtrados", len(df_m))
+    c_a,c_b,c_c=st.columns(3)
+    c_a.metric("En el mapa",len(marcadores))
+    c_b.metric("Sin dirección",len(sin_dir))
+    c_c.metric("Total filtrados",len(df_m))
 
-    if not marcadores and not sin_dir:
-        st.info("No hay proyectos para mostrar con los filtros seleccionados.")
-        return
-
-    # ── Generar HTML Leaflet
-    markers_js = ""
-    for i,m in enumerate(marcadores):
-        val_html  = f'<div style="font-size:11px;color:#059669;font-weight:600">💰 {m["valor"]}</div>' if m["valor"] else ""
-        nota_html = f'<div style="font-size:10px;color:#64748B;margin-top:4px;border-top:1px solid #F1F5F9;padding-top:4px">{m["nota"]}</div>' if m["nota"] else ""
-        popup = (
-            f'<div style="font-family:Inter,sans-serif;min-width:200px">'
-            f'<div style="font-weight:700;font-size:13px;color:#0F172A;margin-bottom:5px">{m["nombre"]}</div>'
-            f'<span style="font-size:10.5px;background:{m["color"]}22;color:{m["color"]};font-weight:600;padding:2px 8px;border-radius:20px">{m["label"]}</span>'
-            f'<div style="font-size:11px;color:#334155;margin-top:6px">📍 {m["dir"]}</div>'
-            f'<div style="font-size:11px;color:#334155">👤 {m["com"]}</div>'
-            f'{val_html}{nota_html}'
-            f'</div>'
+    if not marcadores:
+        st.info("No hay proyectos con dirección. Agréguelas en Actualizar Estado.")
+    else:
+        datos_json=_json.dumps(marcadores,ensure_ascii=False)
+        # HTML completo — TODAS las comillas HTML son simples para no conflictuar con Python
+        html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
+            "<link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css'/>"
+            "<script src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js'></script>"
+            "<style>"
+            "body{margin:0;padding:0}"
+            "#map{height:540px;width:100%;border-radius:10px}"
+            ".lp{border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.15)}"
+            ".leaflet-popup-content{margin:12px 14px;min-width:180px;font-family:Inter,sans-serif}"
+            ".tt{background:#0F172A!important;color:#fff!important;border:none!important;"
+            "border-radius:6px;font-size:12px;font-weight:600;padding:5px 10px}"
+            ".tt::before{border-top-color:#0F172A!important}"
+            ".lg{background:#fff;border-radius:10px;padding:10px 14px;"
+            "box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:2.1}"
+            ".d{display:inline-block;width:10px;height:10px;border-radius:50%;"
+            "margin-right:5px;vertical-align:middle;border:2px solid #fff}"
+            "</style></head><body><div id='map'></div><script>"
+            "var map=L.map('map').setView([4.672,-74.055],12);"
+            "L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',"
+            "{attribution:'&copy; OpenStreetMap',maxZoom:18}).addTo(map);"
+            # Alto 61 — div icon con comillas simples en todo el HTML inline
+            "L.marker([4.6476,-74.0600],"
+            "{icon:L.divIcon({html:'<div style=\'background:#0D9488;color:#fff;"
+            "font-size:9px;font-weight:700;padding:4px 9px;border-radius:6px;"
+            "white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,.3)\'>"
+            "&#11088; ALTO 61<br><span style=\'font-size:8px;opacity:.85\'>"
+            "Calle 61 #3F-08</span></div>',iconAnchor:[40,14],className:''})}"
+            ").bindTooltip('Alto 61 - Edificio Modelo',"
+            "{className:'tt',direction:'top'}).addTo(map);"
+            "var D="
+        ) + datos_json + (
+            ";D.forEach(function(m){"
+            "var p='<div style=\'font-family:Inter,sans-serif\'>'+"
+            "'<b style=\'font-size:13px;color:#0F172A\'>'+m.nombre+'</b><br>'+"
+            "'<span style=\'font-size:10px;background:'+m.color+'22;color:'+m.color+"
+            "';font-weight:600;padding:2px 7px;border-radius:20px\'>'+m.label+'</span><br>'+"
+            "'<span style=\'font-size:11px;color:#334155\'>&#128205; '+m.dir+'</span><br>'+"
+            "(m.com?'<span style=\'font-size:11px;color:#334155\'>&#128100; '+m.com+'</span><br>':'')"
+            "+(m.valor?'<span style=\'font-size:11px;color:#059669;font-weight:600\'>"
+            "&#128176; '+m.valor+'</span><br>':'')+"
+            "(m.nota?'<span style=\'font-size:10px;color:#64748B\'>'+m.nota+'</span>':'')"
+            "+'</div>';"
+            "L.circleMarker([m.lat,m.lng],"
+            "{radius:10,fillColor:m.color,color:'#fff',weight:2.5,fillOpacity:.88})"
+            ".bindTooltip('<b>'+m.nombre+'</b>',"
+            "{permanent:false,direction:'top',offset:[0,-8],className:'tt'})"
+            ".bindPopup(p,{className:'lp'}).addTo(map);});"
+            "var lg=L.control({position:'bottomright'});"
+            "lg.onAdd=function(){var d=L.DomUtil.create('div','lg');"
+            "d.innerHTML='<b>Estados</b><br>"
+            "<span class=\'d\' style=\'background:#D97706\'></span>En evaluacion<br>"
+            "<span class=\'d\' style=\'background:#F59E0B\'></span>Contacto frio<br>"
+            "<span class=\'d\' style=\'background:#EF4444\'></span>Negociando<br>"
+            "<span class=\'d\' style=\'background:#0EA5E9\'></span>Stand-by<br>"
+            "<span class=\'d\' style=\'background:#3B82F6\'></span>Lead<br>"
+            "<span class=\'d\' style=\'background:#059669\'></span>Cerrado';"
+            "return d;};lg.addTo(map);"
+            "</script></body></html>"
         )
-        markers_js += f"""
-        L.circleMarker([{m["lat"]}, {m["lng"]}], {{
-            radius:10, fillColor:"{m["color"]}", color:"white",
-            weight:2.5, opacity:1, fillOpacity:0.88
-        }})
-        .bindTooltip("<b>{m["nombre"]}</b>", {{
-            permanent:false, direction:"top", offset:[0,-8], className:"ttip"
-        }})
-        .bindPopup(`{popup.replace(chr(96), "'")}`)
-        .addTo(map);
-"""
+        st.components.v1.html(html, height=560, scrolling=False)
 
-    mapa_html = f"""<!DOCTYPE html><html><head>
-<meta charset="utf-8"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<style>
-  body{{margin:0;padding:0}}
-  #map{{height:540px;width:100%;border-radius:10px}}
-  .leaflet-popup-content-wrapper{{border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.18)}}
-  .leaflet-popup-content{{margin:12px 14px}}
-  .ttip{{background:#0F172A!important;color:white!important;border:none!important;
-    border-radius:6px;font-family:Inter,sans-serif;font-size:12px;font-weight:600;
-    padding:5px 10px;box-shadow:0 2px 8px rgba(0,0,0,.3)}}
-  .ttip::before{{border-top-color:#0F172A!important}}
-  .leyenda{{background:white;border-radius:10px;padding:10px 14px;
-    box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:11px;line-height:2.1}}
-  .dot{{display:inline-block;width:10px;height:10px;border-radius:50%;
-    margin-right:5px;vertical-align:middle;border:2px solid white;
-    box-shadow:0 1px 3px rgba(0,0,0,.2)}}
-</style></head><body>
-<div id="map"></div>
-<script>
-var map = L.map("map").setView([4.672, -74.055], 12);
-L.tileLayer("https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",{{
-  attribution:"© OpenStreetMap", maxZoom:18
-}}).addTo(map);
-
-// ⭐ Alto 61 — edificio modelo Ágora Tech (Calle 61 #3F-08)
-L.marker([4.6476, -74.0600], {{
-  icon: L.divIcon({{
-    html: `<div style="background:#0D9488;color:white;font-size:9px;font-weight:700;
-      padding:4px 9px;border-radius:6px;white-space:nowrap;
-      box-shadow:0 2px 8px rgba(0,0,0,.35);line-height:1.4">
-      ⭐ ALTO 61<br><span style="font-size:8px;opacity:.85">Calle 61 #3F-08</span></div>`,
-    iconAnchor:[40,14], className:""
-  }})
-}}).bindTooltip("<b>⭐ Alto 61 — Edificio Modelo Ágora Tech</b><br>Calle 61 #3F-08, Bogotá",
-  {{className:"ttip",direction:"top"}}).addTo(map);
-
-{markers_js}
-
-var legend = L.control({{position:"bottomright"}});
-legend.onAdd = function() {{
-  var d = L.DomUtil.create("div","leyenda");
-  d.innerHTML = "<strong style=\"font-size:11.5px\">Estados</strong><br>"
-    + "<span class=\"dot\" style=\"background:#D97706\"></span>En evaluación<br>"
-    + "<span class=\"dot\" style=\"background:#F59E0B\"></span>Contacto frío<br>"
-    + "<span class=\"dot\" style=\"background:#EF4444\"></span>Negociando<br>"
-    + "<span class=\"dot\" style=\"background:#0EA5E9\"></span>Stand-by vig.<br>"
-    + "<span class=\"dot\" style=\"background:#3B82F6\"></span>Lead nuevo<br>"
-    + "<span class=\"dot\" style=\"background:#059669\"></span>Contrato cerrado";
-  return d;
-}};
-legend.addTo(map);
-</script></body></html>"""
-
-    st.components.v1.html(mapa_html, height=560, scrolling=False)
-
-    # ── Edificios sin dirección
     if sin_dir:
         with st.expander(f"📍 {len(sin_dir)} edificios sin dirección — clic para agregarla"):
             st.markdown(
-                '<div class="al amber"><div>💡</div><div>Agrega la dirección en '                '<strong>Actualizar Estado → Editar información</strong> '                'y aparecerá automáticamente en el mapa.</div></div>',
+                '<div class="al amber"><div>💡</div><div>Agrega la dirección en '
+                '<strong>Actualizar Estado → Editar información</strong> '
+                'y aparecerá en el mapa automáticamente.</div></div>',
                 unsafe_allow_html=True)
-            cols = st.columns(3)
-            for i, nombre in enumerate(sin_dir):
-                with cols[i % 3]:
+            cols=st.columns(3)
+            for i,nombre in enumerate(sin_dir):
+                with cols[i%3]:
                     if st.button(f"📝 {nombre[:22]}", key=f"mdir_{i}", use_container_width=True):
-                        st.session_state.editing = nombre
-                        st.session_state.page = "Actualizar Estado"
+                        st.session_state.editing=nombre
+                        st.session_state.page="Actualizar Estado"
                         st.rerun()
 
 
