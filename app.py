@@ -323,7 +323,21 @@ def normalizar(estado_raw, etapa_orig):
 
 def limpiar_num(val):
     if val is None: return 0
-    s=str(val).replace("$","").replace(".","").replace(",","").replace("#","").strip()
+    s = str(val).strip()
+    # Quitar símbolo de peso y espacios
+    s = s.replace("$","").replace(" ","").replace("#","").strip()
+    # Si tiene punto Y coma, es formato europeo: 1.234.567,89 → quitar puntos
+    if "." in s and "," in s:
+        s = s.replace(".","").replace(",",".")
+    elif "." in s:
+        # Solo puntos: puede ser separador de miles colombiano (141.547.806)
+        # Si hay más de un punto, son miles; si hay uno con 2 decimales al final, es decimal
+        partes = s.split(".")
+        if len(partes) > 2 or (len(partes)==2 and len(partes[-1])!=2):
+            s = s.replace(".","")  # separador de miles
+        # si es un solo punto con exactamente 2 decimales, es decimal → dejar como está
+    elif "," in s:
+        s = s.replace(",","")  # comas como separador de miles
     try: return int(float(s))
     except: return 0
 
@@ -561,8 +575,13 @@ def pg_login():
 # ══════════════════════════════════════════
 def sidebar():
     u=st.session_state.user; es_g=u["rol"] in ["gerente","socio"]
-    df=mis_proyectos(); hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
-    n_nov=len(df[df["lastUpdate"].astype(str).str.strip()>hace_7])
+    df=mis_proyectos(); hace_7=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
+    def _fv(f):
+        try:
+            s=str(f or "").strip()[:10]
+            return s if len(s)==10 and s[4]=="-" else "2000-01-01"
+        except: return "2000-01-01"
+    n_nov=len(df[df["lastUpdate"].apply(_fv)>hace_7])
     sheet_ok=st.session_state.get("sheet_ok",False)
     pg_actual=st.session_state.get("page","Dashboard")
 
@@ -622,9 +641,7 @@ def sidebar():
             item("👥  Usuarios",         "Usuarios",          "usr")
             item("⚙️  Configuración",    "Configuración",     "cfg")
         else:
-            sec("CONFIG")
-            item("⚙️  Configuración",    "Configuración",     "cfg2")
-
+            pass
         st.markdown("<hr style='border-color:rgba(255,255,255,.08);margin:10px 0'>", unsafe_allow_html=True)
         if st.button("🔄  Sincronizar Sheet", use_container_width=True, key="sb_sync"):
             refrescar_sheet(); st.rerun()
@@ -650,9 +667,14 @@ def pg_dashboard():
         st.markdown('<div class="al amber"><div>⚠️</div><div><strong>Usando datos locales.</strong> El Sheet no está accesible. Haz clic en "🔄 Sincronizar Sheet" en la barra lateral.</div></div>',unsafe_allow_html=True)
 
     # Alertas críticas banner
-    hace_14=(datetime.now()-timedelta(days=14)).isoformat()[:10]
+    hace_14=(datetime.now()-timedelta(days=14)).strftime("%Y-%m-%d")
+    def fecha_valida(f):
+        try:
+            s = str(f or "").strip()[:10]
+            return s if len(s)==10 and s[4]=="-" else ""
+        except: return ""
     neg_al=df[df["estado"]=="negociacion"]
-    sin_14=df[(df["estado"]=="evaluacion_consejo")&(df["lastUpdate"].astype(str).str.strip()<hace_14)]
+    sin_14=df[(df["estado"]=="evaluacion_consejo")&(df["lastUpdate"].apply(fecha_valida)<hace_14)&(df["lastUpdate"].apply(fecha_valida)>"2020-01-01")]
     if len(neg_al)>0 or len(sin_14)>0:
         with st.expander(f"🚨 ALERTAS CRÍTICAS ({len(neg_al)} negociaciones · {len(sin_14)} sin actualizar)",expanded=True):
             for _,r in neg_al.iterrows():
@@ -793,14 +815,19 @@ def pg_dashboard():
 
     # Alertas
     st.markdown("#### 🚨 Alertas automáticas")
-    hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
+    hace_7=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
+    def fecha_ok(f):
+        try:
+            s=str(f or "").strip()[:10]
+            return s if len(s)==10 and s[4]=="-" else "2099-01-01"
+        except: return "2099-01-01"
     if es_g:
         for com in sorted(df["comercial"].dropna().unique()):
             dc=df[df["comercial"]==com]
             neg_c=dc[dc["estado"]=="negociacion"]
             eval_c=dc[dc["estado"]=="evaluacion_consejo"]
             esp_c=dc[dc["estado"]=="aprobado_espera"]
-            sin_c=dc[dc["lastUpdate"].astype(str).str.strip()<hace_7]
+            sin_c=dc[dc["lastUpdate"].apply(fecha_ok)<hace_7]
             n_al=len(neg_c)+(1 if len(esp_c)>0 else 0)+(1 if len(sin_c)>5 else 0)
             ico="🔴" if len(neg_c)>0 else ("🟡" if n_al>0 else "🟢")
             with st.expander(f"{ico} {com} — {len(dc)} proy · {len(eval_c)} en evaluación · {len(esp_c)} stand-by",expanded=len(neg_c)>0):
@@ -822,7 +849,7 @@ def pg_dashboard():
         mi=df
         for _,r in mi[mi["estado"]=="negociacion"].iterrows():
             st.markdown(f'<div class="al red"><div>🔥</div><div><strong>NEGOCIACIÓN: {r["nombre"]}</strong><br>{str(r.get("lastNote",""))[:150]}</div></div>',unsafe_allow_html=True)
-        sin=mi[mi["lastUpdate"].astype(str).str.strip()<hace_7]
+        sin=mi[mi["lastUpdate"].apply(fecha_ok)<hace_7]
         if len(sin)>0:
             st.markdown(f'<div class="al amber"><div>📋</div><div><strong>{len(sin)} proyectos sin actualizar en +7 días.</strong> Usa Actualizar Estado.</div></div>',unsafe_allow_html=True)
     if not ai_ok():
@@ -834,9 +861,14 @@ def pg_dashboard():
 def pg_novedades():
     hdr("🔔","Novedades","Actualizaciones de los últimos 7 días — clic para ver detalle")
     df=mis_proyectos()
-    hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
-    df_nov=df[df["lastUpdate"].astype(str).str.strip()>hace_7].sort_values("lastUpdate",ascending=False)
-    df_sin=df[~(df["lastUpdate"].astype(str).str.strip()>hace_7)]
+    hace_7=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
+    def fv(f):
+        try:
+            s=str(f or "").strip()[:10]
+            return s if len(s)==10 and s[4]=="-" else "2000-01-01"
+        except: return "2000-01-01"
+    df_nov=df[df["lastUpdate"].apply(fv)>hace_7].sort_values("lastUpdate",ascending=False)
+    df_sin=df[~(df["lastUpdate"].apply(fv)>hace_7)]
 
     c1,c2,c3=st.columns(3)
     c1.markdown(f'<div class="kpi" style="border-bottom:2px solid #059669"><div class="kpi-lbl">Actualizados</div><div class="kpi-val green">{len(df_nov)}</div><div class="kpi-sub">últimos 7 días</div></div>',unsafe_allow_html=True)
@@ -897,7 +929,7 @@ def pg_novedades():
 # ══════════════════════════════════════════
 def pg_informe_semanal():
     hdr("📈","Informe Semanal","Para socios y equipo directivo")
-    df=get_crm(); hace_7=(datetime.now()-timedelta(days=7)).isoformat()[:10]
+    df=get_crm(); hace_7=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
     st.markdown(f"""<div style='background:linear-gradient(135deg,#0F172A,#1E3A5F);border-radius:12px;padding:18px 22px;margin-bottom:20px;color:white'>
       <div style='font-family:Space Grotesk,sans-serif;font-size:17px;font-weight:700'>Informe Gerencial — Ágora Tech</div>
       <div style='font-size:11px;color:rgba(255,255,255,.4);margin-top:3px'>Semana {(datetime.now()-timedelta(days=7)).strftime("%d %b")} – {datetime.now().strftime("%d %b %Y")} · {len(df)} propuestas totales</div>
@@ -1663,7 +1695,7 @@ def pg_calendario():
     with tab_add:
         u_cal = st.session_state.user
         st.markdown("**Agregar evento al calendario**")
-        with st.form("cal_form"):
+        with st.form("cal_form", clear_on_submit=True):
             c1, c2 = st.columns(2)
             with c1:
                 titulo_a = st.text_input("Título *", placeholder="Ej: Asamblea Edificio Camila")
@@ -1681,26 +1713,24 @@ def pg_calendario():
                     com_a = st.selectbox("Comercial responsable", ["—"]+COMS)
                 else:
                     com_a = u_cal.get("comercial","")
-            if st.form_submit_button("📅 Agregar al calendario", use_container_width=True):
-                if not titulo_a.strip():
-                    st.error("El título es obligatorio")
-                else:
-                    nuevo_ev = {
-                        "titulo": titulo_a, "tipo": tipo_a,
-                        "fecha": fecha_a.isoformat(),
-                        "hora": hora_ini, "fin": hora_fin,
-                        "notas": notas_a,
-                        "color": COLORES.get(tipo_a,"#64748B"),
-                        "icono": ICONOS.get(tipo_a,"📅"),
-                        "edificio": edif_a, "comercial": com_a,
-                    }
-                    st.session_state.eventos_cal.append(nuevo_ev)
-                    st.success(f"✅ **{titulo_a}** agregado para el {fecha_a.strftime('%d %b %Y')} a las {hora_ini}")
-                    # Navegar a la semana del evento
-                    ev_date = fecha_a
-                    diff_weeks = (ev_date - hoy).days // 7
-                    st.session_state["sem_offset"] = diff_weeks
-                    st.rerun()
+            submitted = st.form_submit_button("📅 Agregar al calendario", use_container_width=True)
+
+        # Procesar FUERA del form para evitar problemas con rerun
+        if submitted:
+            if not titulo_a.strip():
+                st.error("El título es obligatorio")
+            else:
+                nuevo_ev = {
+                    "titulo": titulo_a, "tipo": tipo_a,
+                    "fecha": fecha_a.isoformat(),
+                    "hora": hora_ini, "fin": hora_fin,
+                    "notas": notas_a,
+                    "color": COLORES.get(tipo_a,"#64748B"),
+                    "icono": ICONOS.get(tipo_a,"📅"),
+                    "edificio": edif_a, "comercial": com_a,
+                }
+                st.session_state.eventos_cal.append(nuevo_ev)
+                st.success(f"✅ **{titulo_a}** agregado para el {fecha_a.strftime('%d %b %Y')} a las {hora_ini}")
 
         # Lista de todos los eventos
         if st.session_state.eventos_cal:
@@ -2257,13 +2287,7 @@ COLOR_LEAD = {
 
 def get_leads():
     if "leads_db" not in st.session_state:
-        st.session_state.leads_db = [
-            # Ejemplos iniciales para que no aparezca vacío
-            {"id":"L001","fecha_entrada":"2026-06-10","nombre":"Torres Residencias","contacto":"Luis Torres","telefono":"+57 300 123 4567","como_llego":"WhatsApp","asignado":"RAFAEL TORRES","fecha_asignacion":"2026-06-10","estado":"Pasó a cotización","fecha_cotizacion":"2026-06-15","notas":"Edificio de 80 unidades en Chapinero. Muy interesado.","dias_lead":5,"dias_cotizacion":5},
-            {"id":"L002","fecha_entrada":"2026-06-12","nombre":"Conjunto Los Arrayanes","contacto":"Ana Gómez","telefono":"+57 315 987 6543","como_llego":"WhatsApp","asignado":"LINA CALLE","fecha_asignacion":"2026-06-13","estado":"En contacto","fecha_cotizacion":"","notas":"Habló con administradora. Quiere reunión presencial.","dias_lead":1,"dias_cotizacion":None},
-            {"id":"L003","fecha_entrada":"2026-06-18","nombre":"Ed. Viento del Norte","contacto":"Jhon Reyes","telefono":"+57 311 555 0001","como_llego":"WhatsApp","asignado":"SONIA CASTRO","fecha_asignacion":"2026-06-18","estado":"Explicado — sin respuesta","fecha_cotizacion":"","notas":"Le explicamos el servicio. No ha vuelto a contestar.","dias_lead":0,"dias_cotizacion":None},
-            {"id":"L004","fecha_entrada":"2026-06-20","nombre":"Conjunto Prados del Sur","contacto":"María Herrera","telefono":"+57 320 444 7890","como_llego":"WhatsApp","asignado":"","fecha_asignacion":"","estado":"Nuevo","fecha_cotizacion":"","notas":"Llegó por WhatsApp. Pendiente asignar.","dias_lead":None,"dias_cotizacion":None},
-        ]
+        st.session_state.leads_db = []
     return st.session_state.leads_db
 
 def pg_leads():
