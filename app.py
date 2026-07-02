@@ -1730,7 +1730,11 @@ def pg_calendario():
                     "edificio": edif_a, "comercial": com_a,
                 }
                 st.session_state.eventos_cal.append(nuevo_ev)
+                # Navegar a la semana del evento para verlo inmediatamente
+                diff = (fecha_a - lunes).days
+                st.session_state["sem_offset"] = diff // 7
                 st.success(f"✅ **{titulo_a}** agregado para el {fecha_a.strftime('%d %b %Y')} a las {hora_ini}")
+                st.rerun()
 
         # Lista de todos los eventos
         if st.session_state.eventos_cal:
@@ -2255,6 +2259,11 @@ def pg_mapa():
                     if st.button(f"📝 {n[:22]}", key=f"md_{i}", use_container_width=True):
                         st.session_state.editing=n; st.session_state.page="Actualizar Estado"; st.rerun()
 
+
+def get_leads():
+    if "leads_db" not in st.session_state:
+        st.session_state.leads_db = []
+    return st.session_state.leads_db
 
 def pg_leads():
     hdr("📲","Leads WhatsApp","Seguimiento de contactos entrantes → cotización")
