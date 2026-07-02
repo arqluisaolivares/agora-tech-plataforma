@@ -491,7 +491,7 @@ def refrescar_sheet():
 def mis_proyectos():
     df=get_crm(); u=st.session_state.get("user")
     if not u: return df.iloc[0:0]
-    if u["rol"]=="gerente": return df
+    if u["rol"] in ["gerente","viewer","socio"]: return df
     return df[df["comercial"].str.upper()==u["comercial"].upper()]
 
 def update_proy(nombre, campos):
@@ -629,28 +629,35 @@ def sidebar():
         sec("PRINCIPAL")
         item("📊  Dashboard",       "Dashboard",          "dash")
         item(f"🔔  Novedades{' ('+str(n_nov)+')' if n_nov else ''}","Novedades","nov")
-        sec("COMERCIAL")
-        item("📲  Leads WA",         "Leads WhatsApp",     "leads")
-        item("📋  Proyectos",        "Proyectos",          "proy")
-        item("📝  Actualizar Estado","Actualizar Estado",  "act")
-        item("🧮  Nueva Cotización", "Nueva Cotización",   "cot")
-        item("📊  Encuesta",         "Encuesta Prospecto", "enc")
-        item("📅  Calendario",       "Calendario",         "cal")
-        item("🗺️  Mapa",             "Mapa de Proyectos",  "mapa")
-        sec("IA")
-        item("✉️  Correos IA",       "Correos IA",         "cor")
-        item("🤖  Asistente IA",     "Asistente IA",       "asi")
-        if es_g:
-            sec("GERENCIA")
-            item("📈  Informe Semanal",  "Informe Semanal",   "inf")
-            item("💰  Pagos y Finanzas", "Pagos y Finanzas",  "pag")
-            item("🔍  Auditoría",        "Auditoría",         "aud")
-            item("🎯  Pipeline",         "Pipeline",          "pip")
-            sec("ADMIN")
-            item("👥  Usuarios",         "Usuarios",          "usr")
-            item("⚙️  Configuración",    "Configuración",     "cfg")
+        if u["rol"] == "viewer":
+            sec("VISUALIZACIÓN")
+            item("📋  Proyectos",        "Proyectos",          "proy")
+            item("🗺️  Mapa",             "Mapa de Proyectos",  "mapa")
+            item("📅  Calendario",       "Calendario",         "cal")
+            item("🎯  Pipeline",         "Pipeline",           "pip")
+            item("📈  Informe Semanal",  "Informe Semanal",    "inf")
         else:
-            pass
+            sec("COMERCIAL")
+            item("📲  Leads WA",         "Leads WhatsApp",     "leads")
+            item("📋  Proyectos",        "Proyectos",          "proy")
+            item("📝  Actualizar Estado","Actualizar Estado",  "act")
+            item("🧮  Nueva Cotización", "Nueva Cotización",   "cot")
+            item("📊  Encuesta",         "Encuesta Prospecto", "enc")
+            item("📅  Calendario",       "Calendario",         "cal")
+            item("🗺️  Mapa",             "Mapa de Proyectos",  "mapa")
+            sec("IA")
+            item("✉️  Correos IA",       "Correos IA",         "cor")
+            item("🤖  Asistente IA",     "Asistente IA",       "asi")
+            if es_g:
+                sec("GERENCIA")
+                item("📈  Informe Semanal",  "Informe Semanal",   "inf")
+                item("💰  Pagos y Finanzas", "Pagos y Finanzas",  "pag")
+                item("🔍  Auditoría",        "Auditoría",         "aud")
+                item("🎯  Pipeline",         "Pipeline",          "pip")
+                sec("ADMIN")
+                item("👥  Usuarios",         "Usuarios",          "usr")
+                item("⚙️  Configuración",    "Configuración",     "cfg")
+
         st.markdown("<hr style='border-color:rgba(255,255,255,.08);margin:10px 0'>", unsafe_allow_html=True)
         if st.button("🔄  Sincronizar Sheet", use_container_width=True, key="sb_sync"):
             refrescar_sheet(); st.rerun()
