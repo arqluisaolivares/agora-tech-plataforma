@@ -272,8 +272,7 @@ USUARIOS_BASE = {
     "lina":     {"pass":"lina2026",     "nombre":"Lina Calle",         "rol":"comercial", "comercial":"LINA CALLE",         "activo":True},
     "alberto":  {"pass":"alberto2026",  "nombre":"Alberto Ferrer",     "rol":"comercial", "comercial":"ALBERTO FERRER",     "activo":True},
     "santiago": {"pass":"santiago2026", "nombre":"Santiago Bohórquez", "rol":"comercial", "comercial":"SANTIAGO BOHORQUEZ", "activo":True},
-    "ctorres":  {"pass":"socio2026", "nombre":"Carlos Torres",  "rol":"socio", "comercial":"", "activo":True},
-    "cmendez":  {"pass":"socio2026", "nombre":"Carlos Méndez",  "rol":"socio", "comercial":"", "activo":True},
+    "directivo": {"pass":"agora2026", "nombre":"Directivo",  "rol":"viewer", "comercial":"", "activo":True},
 }
 def get_usuarios():
     if "usuarios_db" not in st.session_state:
@@ -577,14 +576,14 @@ def pg_login():
                     st.session_state.logged_in=True; st.session_state.user=users[un]; st.rerun()
                 else: st.error("Usuario o contraseña incorrectos")
         st.markdown("""<div style='background:#F8FAFC;border:1px solid #E2E8F0;border-radius:9px;padding:10px;margin-top:12px;font-size:11px;color:#94A3B8;text-align:center'>
-          luisa/luisa2026 · rafael/rafael2026 · sonia/sonia2026<br>lina/lina2026 · alberto/alberto2026 · santiago/santiago2026<br><span style='color:#A78BFA'>Socios: ctorres/socio2026 · cmendez/socio2026</span>
+          luisa/luisa2026 · rafael/rafael2026 · sonia/sonia2026<br>lina/lina2026 · alberto/alberto2026 · santiago/santiago2026<br><span style='color:#A78BFA'>Directivo: directivo/agora2026</span>
         </div>""",unsafe_allow_html=True)
 
 # ══════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════
 def sidebar():
-    u=st.session_state.user; es_g=u["rol"] in ["gerente","socio"]
+    u=st.session_state.user; es_g=u["rol"] in ["gerente","socio","viewer"]
     df=mis_proyectos(); hace_7=(datetime.now()-timedelta(days=7)).strftime("%Y-%m-%d")
     def _fv(f):
         try:
@@ -1245,7 +1244,7 @@ def pg_actualizar():
                 nuevo_tel     = st.text_input("Teléfono / WhatsApp",
                     value=str(r.get("telefono","") or "").strip(),
                     placeholder="+57 300 000 0000")
-                if u["rol"] in ["gerente","socio"]:
+                if u["rol"] in ["gerente","socio","viewer"]:
                     nuevo_com = st.selectbox("Comercial responsable", COMS,
                         index=COMS.index(str(r.get("comercial","")).strip())
                         if str(r.get("comercial","")).strip() in COMS else 0)
@@ -1719,7 +1718,7 @@ def pg_calendario():
                     [f"{h:02d}:{m:02d}" for h in range(7,22) for m in [0,30]], index=18)
                 hora_fin = st.selectbox("Hora fin",
                     [f"{h:02d}:{m:02d}" for h in range(7,23) for m in [0,30]], index=21)
-                if u_cal["rol"] in ["gerente","socio"]:
+                if u_cal["rol"] in ["gerente","socio","viewer"]:
                     com_a = st.selectbox("Comercial responsable", ["—"]+COMS)
                 else:
                     com_a = u_cal.get("comercial","")
@@ -1799,7 +1798,7 @@ def pg_calendario():
         with cf1:
             filtro_prior = st.selectbox("Prioridad", ["Todas","🔥 Críticas","🟡 Importantes","🔵 Stand-by","💡 Seguimiento"])
         with cf2:
-            if st.session_state.user["rol"] in ["gerente","socio"]:
+            if st.session_state.user["rol"] in ["gerente","socio","viewer"]:
                 filtro_com_s = st.selectbox("Comercial", ["Todos"]+COMS)
             else:
                 filtro_com_s = st.session_state.user.get("comercial","Todos")
@@ -1941,7 +1940,7 @@ def pg_usuarios():
 
     for uk, ud in usuarios.items():
         activo = ud.get("activo", True)
-        rol_colors = {"gerente":"#7C3AED","comercial":"#2563EB","socio":"#0D9488"}
+        rol_colors = {"gerente":"#7C3AED","comercial":"#2563EB","socio":"#0D9488","viewer":"#0D9488"}
         rol_color  = rol_colors.get(ud["rol"],"#94A3B8")
         cols = st.columns([2, 1.5, 1, 1, 0.7, 0.7])
         cols[0].markdown(f"**{ud['nombre']}**")
@@ -1978,13 +1977,13 @@ def pg_usuarios():
                 np = st.text_input("Nueva contraseña (vacío = sin cambio)",
                                    type="password", placeholder="••••••••")
             with c2:
-                ROLES = ["gerente","comercial","socio"]
+                ROLES = ["gerente","comercial","viewer"]
                 idx_r = ROLES.index(ud_e["rol"]) if ud_e["rol"] in ROLES else 1
                 nr = st.selectbox("Rol", ROLES, index=idx_r,
                     format_func=lambda x: {
                         "gerente":"🟣 Gerente — acceso total",
                         "comercial":"🔵 Comercial — sus proyectos",
-                        "socio":"🟢 Socio — solo visualización"
+                        "socio":"🟢 Socio — solo visualización","viewer":"👁️ Directivo — solo visualización"
                     }.get(x, x))
                 COMS_EXT = [""] + COMS
                 idx_c = COMS_EXT.index(ud_e.get("comercial","")) if ud_e.get("comercial","") in COMS_EXT else 0
@@ -2018,7 +2017,7 @@ def pg_usuarios():
                 nn2  = st.text_input("Nombre completo *")
                 np2  = st.text_input("Contraseña *", type="password")
             with c2:
-                nr2  = st.selectbox("Rol", ["comercial","gerente","socio"])
+                nr2  = st.selectbox("Rol", ["comercial","gerente","viewer"])
                 nc2  = st.selectbox("Comercial", [""]+COMS,
                     format_func=lambda x: "— Sin asignar —" if x=="" else x)
             if st.form_submit_button("➕ Crear usuario", use_container_width=True):
@@ -2112,7 +2111,7 @@ def pg_mapa():
         filtro_estado = st.selectbox("Estado", ["Todos"]+ESTADOS_LISTA,
             format_func=lambda x: ETAPAS.get(x,{"label":x})["label"] if x!="Todos" else "Todos")
     with c2:
-        if st.session_state.user["rol"] in ["gerente","socio"]:
+        if st.session_state.user["rol"] in ["gerente","socio","viewer"]:
             filtro_com = st.selectbox("Comercial",
                 ["Todos"]+sorted(df["comercial"].dropna().unique().tolist()))
         else:
@@ -2278,7 +2277,7 @@ def get_leads():
 def pg_leads():
     hdr("📲","Leads WhatsApp","Seguimiento de contactos entrantes → cotización")
     u = st.session_state.user
-    es_g = u["rol"] in ["gerente","socio"]
+    es_g = u["rol"] in ["gerente","socio","viewer"]
     leads = get_leads()
 
     # ── KPIs
@@ -2410,7 +2409,7 @@ def pg_leads():
     # TAB 2: REGISTRAR NUEVO
     # ════════════════════════
     with tab_nuevo:
-        if u["rol"] == "socio":
+        if u["rol"] in ["socio","viewer"]:
             st.info("Los socios tienen acceso de solo visualización.")
         else:
             st.markdown("**Registrar nuevo lead de WhatsApp**")
