@@ -126,6 +126,16 @@ ETAPAS = {
 ESTADOS_LISTA = list(ETAPAS.keys())
 COMS = ["RAFAEL TORRES","SONIA CASTRO","LINA CALLE","ALBERTO FERRER","SANTIAGO BOHORQUEZ","LUISA OLIVARES"]
 
+# Constantes para módulo de Leads WhatsApp
+ESTADOS_LEAD = ["Nuevo","En contacto","Explicado — sin respuesta","Pasó a cotización","Perdido"]
+COLOR_LEAD   = {
+    "Nuevo":                    "#3B82F6",
+    "En contacto":              "#F59E0B",
+    "Explicado — sin respuesta":"#94A3B8",
+    "Pasó a cotización":        "#22C55E",
+    "Perdido":                  "#EF4444",
+}
+
 AI_SYSTEM = """Eres el asesor estratégico de Ágora Tech Colombia — automatización de accesos para copropiedades residenciales con sistema SALTO HomeLok. Financiación 100% a 24/36 meses sin intereses. Instalación en 40 días. 140 propuestas activas, $4.2B pipeline, 0 contratos cerrados a jun 2026. Responde en español colombiano. Sé directo y accionable."""
 
 # ══════════════════════════════════════════
